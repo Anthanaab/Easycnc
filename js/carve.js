@@ -247,28 +247,44 @@
 
       // étape 3 : palpage
       const run = el('button', { class: 'btn ok sm', disabled: wizState.busy || wizState.done || pinOn(), onclick: wizRun }, wizState.busy ? 'Palpage…' : 'Lancer le palpage');
-      wiz.append(stepper(3), el('b', {}, 'Palpage'),
+      wiz.append(...[stepper(3), el('b', {}, 'Palpage'),
         el('div', { class: 'muted', style: 'margin:6px 0' }, `La fraise descendra jusqu'à ${pr.maxDepth} mm à ${pr.feed} mm/min jusqu'au contact avec la plaque (${pr.plate} mm), puis Z0 sera défini sur le dessus du matériau et la fraise remontera de ${pr.retract} mm. Restez près de l'arrêt d'urgence.`),
         pinOn() ? el('div', { class: 'warn' }, 'Le palpeur est déjà en contact : écartez la fraise de la plaque.') : null,
         wizState.err ? el('div', { class: 'warn err' }, wizState.err) : null,
         wizState.done ? el('div', { class: 'warn', style: 'background:#dcfce7;color:#166534' }, '✓ Z0 défini sur le dessus du matériau. Retirez la plaque et la pince crocodile.') : null,
-        wizBtns(wizState.done ? null : el('button', { class: 'btn sm', onclick: () => { wizState.step = 2; wizState.phase = 'ok'; wizRender(); } }, 'Retour'), run, cancel));
+        el('div', { class: 'muted wizz', style: 'margin:6px 0' }, wizState.busy ? 'Descente en cours… Z actuel : ' + (grbl.status.wpos[2] || 0).toFixed(2) + ' mm' : ''),
+        wizBtns(wizState.done || wizState.busy ? null : el('button', { class: 'btn sm', onclick: () => { wizState.step = 2; wizState.phase = 'ok'; wizRender(); } }, 'Retour'), wizState.busy ? el('button', { class: 'btn danger sm', onclick: wizAbort }, '■ Arrêt') : run, wizState.busy ? null : cancel)].filter(Boolean));
+    }
+
+    function wizAbort() {
+      grbl.stop(); // arrêt immédiat (feed hold puis reset)
+      wizState.err = 'Palpage interrompu. Déverrouillez avec « Déverrouiller $X » et relevez le Z avant de réessayer.';
+      wizState.busy = false; wizRender();
     }
 
     async function wizRun() {
       const pr = probeParams();
+      const stt = grbl.status.state;
+      if (stt !== 'Idle') {
+        wizState.err = stt === 'Alarm' ? 'La machine est en alarme : cliquez sur « Déverrouiller $X », puis réessayez.' : `La machine n'est pas prête (état : ${stt}). Attendez l'état « Idle ».`;
+        return wizRender();
+      }
       wizState.busy = true; wizState.err = ''; wizRender();
+      grbl.lastPrb = null;
       try {
         log('i', 'Palpage Z…');
         await grbl.send('G91');
         await grbl.send(`G38.2 Z-${pr.maxDepth} F${pr.feed}`);
+        // GRBL envoie [PRB:x,y,z:1] en cas de contact ; une alarme (état « Alarm ») sinon
+        await new Promise((r) => setTimeout(r, 400));
+        if (grbl.status.state === 'Alarm' || !grbl.lastPrb || !grbl.lastPrb.ok) throw new Error('aucun contact détecté');
         await grbl.send(`G10 L20 P1 Z${pr.plate}`);
         await grbl.send(`G0 Z${pr.retract}`);
         await grbl.send('G90');
         wizState.done = true;
         log('i', 'Palpage terminé : Z0 = dessus du matériau.');
       } catch (e) {
-        wizState.err = 'Palpage échoué (pas de contact sur ' + pr.maxDepth + ' mm ?) : ' + e.message + '. Déverrouillez avec $X puis réessayez.';
+        wizState.err = 'Palpage échoué (' + e.message + ' sur ' + pr.maxDepth + ' mm maximum). Si la machine est en alarme, cliquez sur « Déverrouiller $X », relevez le Z, vérifiez la pince et la plaque, puis réessayez.';
         log('e', wizState.err);
         grbl.send('G90').catch(() => {});
       }
@@ -283,6 +299,7 @@
       if (wizState.phase === 'free0' && !on) wizState.phase = 'contact';
       else if (wizState.phase === 'contact' && on) wizState.phase = 'release';
       else if (wizState.phase === 'release' && !on) wizState.phase = 'ok';
+      if (wizState.step === 3 && wizState.busy) { const z = wiz.querySelector('.wizz'); if (z) z.textContent = 'Descente en cours… Z actuel : ' + (grbl.status.wpos[2] || 0).toFixed(2) + ' mm'; return; }
       if (wizState.step === 2 || (wizState.step === 3 && !wizState.busy) || wizState.phase !== before) wizRender();
     }
     const probeBtn = el('button', { class: 'btn sm', onclick: wizOpen }, 'Palper Z…');

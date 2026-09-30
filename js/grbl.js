@@ -80,6 +80,12 @@
         this.on.settings(this.settings);
         return;
       }
+      if (line.startsWith('[PRB:')) { // résultat d'un palpage : [PRB:x,y,z:1] (1 = contact)
+        const m = line.match(/^\[PRB:([-\d.,]+):(\d)\]/);
+        if (m) this.lastPrb = { pos: m[1].split(',').map(parseFloat), ok: m[2] === '1' };
+        this.on.log('info', line);
+        return;
+      }
       if (line.startsWith('Grbl')) { this.inflight = []; this.on.log('info', line); return; }
       this.on.log('info', line);
     }
