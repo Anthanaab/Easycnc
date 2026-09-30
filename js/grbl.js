@@ -95,16 +95,20 @@
       this.status.pins = '';
       const s = this.status;
       s.state = parts[0].split(':')[0];
+      let gotM = false, gotW = false;
       for (const p of parts.slice(1)) {
         const [k, v] = p.split(':');
         const nums = (v || '').split(',').map(parseFloat);
-        if (k === 'MPos') { s.mpos = nums; s.wpos = nums.map((n, i) => n - s.wco[i]); }
-        else if (k === 'WPos') { s.wpos = nums; s.mpos = nums.map((n, i) => n + s.wco[i]); }
+        if (k === 'MPos') { s.mpos = nums; gotM = true; }
+        else if (k === 'WPos') { s.wpos = nums; gotW = true; }
         else if (k === 'WCO') s.wco = nums;
         else if (k === 'FS') { s.feed = nums[0]; s.spindle = nums[1]; }
         else if (k === 'F') s.feed = nums[0];
         else if (k === 'Pn') s.pins = v || '';
       }
+      // le décalage WCO peut arriver après la position dans le même rapport : on calcule une fois tout lu
+      if (gotM) s.wpos = s.mpos.map((n, i) => n - s.wco[i]);
+      else if (gotW) s.mpos = s.wpos.map((n, i) => n + s.wco[i]);
       this.on.status(s);
       const j = this.job;
       if (j && j.acked >= j.total && s.state === 'Idle') {

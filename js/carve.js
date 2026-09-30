@@ -178,6 +178,9 @@
     const connBtn = el('button', { class: 'btn primary' }, 'Connecter la machine');
     const stateBadge = el('span', { class: 'badge' }, 'Déconnecté');
     const dro = ['X', 'Y', 'Z'].map((a) => el('div', {}, el('small', {}, a), el('b', {}, '—')));
+    let showMachine = false;
+    const droLabel = el('div', { class: 'muted' }, 'Coordonnées de travail (depuis votre zéro)');
+    const droToggle = el('button', { class: 'btn sm', onclick: () => { showMachine = !showMachine; updateConn(); } }, 'Machine ⇄ Travail');
     const stepSel = el('select', {}, [0.1, 1, 5, 10, 50].map((v) => el('option', { value: v, selected: v === 1 }, v + ' mm')));
     const jogFeed = el('input', { type: 'number', value: 800 });
     const jogBtn = (label, dx, dy, dz, cls) => el('button', { class: cls || '', onclick: () => {
@@ -342,7 +345,7 @@
 
     const c5 = card(5, 'Usinage',
       el('div', { class: 'row' }, connBtn, stateBadge),
-      el('div', {}, dro && el('div', { class: 'dro' }, dro)),
+      el('div', { class: 'dro' }, dro), el('div', { class: 'row', style: 'justify-content:space-between' }, droLabel, droToggle),
       pinBadge, wiz, settingsNote,
       el('div', { class: 'row' }, el('label', {}, 'Pas'), el('div', { class: 'grow' }, stepSel), el('label', { style: 'width:auto' }, 'F'), el('div', { style: 'width:70px' }, jogFeed)),
       el('div', { class: 'jog' },
@@ -382,7 +385,9 @@
       const s = grbl.status;
       stateBadge.textContent = s.state;
       stateBadge.className = 'badge ' + s.state;
-      dro.forEach((d, i) => { d.lastChild.textContent = c ? (s.wpos[i] || 0).toFixed(2) : '—'; });
+      const coords = showMachine ? s.mpos : s.wpos;
+      dro.forEach((d, i) => { d.lastChild.textContent = c ? (coords[i] || 0).toFixed(2) : '—'; });
+      droLabel.textContent = showMachine ? 'Coordonnées MACHINE (depuis le homing)' : 'Coordonnées de travail (depuis votre zéro)';
       pauseBtn.textContent = grbl.job && grbl.job.paused ? '▶ Reprendre' : '⏸ Pause';
     }
 
@@ -415,6 +420,16 @@
         return;
       }
       const dry = !extJob && dryChk.checked;
+      // limites logicielles actives : on prévient si le parcours descendrait sous la course Z réglée dans la machine
+      if (job && !job.laser && !extJob && job.minZ !== undefined && grbl.settings.$20 === 1 && grbl.settings.$132) {
+        const deepest = grbl.status.wco[2] + job.minZ + (dry ? dryZ : 0), lim = grbl.settings.$132;
+        if (deepest < -lim - 0.01) {
+          const go = await CNC.confirmModal('Profondeur au-delà de la course Z', el('div', {},
+            el('div', { class: 'warn' }, `D'après votre zéro Z, la fraise descendrait à Z machine = ${CNC.round(deepest, 1)} mm, sous la limite de la machine (−${lim} mm, réglage $132).`),
+            el('div', {}, 'Avec les limites logicielles actives, la machine s\'arrêtera en alarme en cours de route. Réduisez la profondeur, ou relevez le Z0 (palpez sur une pièce plus haute).')), 'Lancer quand même');
+          if (!go) return;
+        }
+      }
       const items = dry
         ? [`Le parcours sera relevé de ${dryZ} mm et la broche ne sera PAS démarrée : la fraise passe au-dessus du matériau`,
            `Zéro défini sur ${P().origin === 'center' ? 'le centre' : 'le coin bas-gauche'} en X/Y et sur le dessus du matériau en Z`,
@@ -579,7 +594,7 @@
       const origin = P().origin === 'center' ? { x: st.w / 2, y: st.h / 2, label: 'centre du matériau' } : { x: 0, y: 0, label: 'coin bas-gauche du matériau' };
       const lines = CNC.gcode.generate({ moves, machine, params, bit, material, name: P().name, origin });
       const s = TP.stats(moves, params, machine.rapid || 1500);
-      job = { lines, moves, stats: s, args: { moves, machine, params, bit, material, name: P().name, origin } };
+      job = { lines, moves, stats: s, minZ, args: { moves, machine, params, bit, material, name: P().name, origin } };
       warns.forEach((w) => warnBox.append(el('div', { class: 'warn' }, w)));
       const stat = (a, b) => el('div', { class: 'stat' }, el('span', {}, a), el('b', {}, b));
       stats.append(stat('Durée estimée', CNC.fmtTime(s.sec)), stat('Longueur de coupe', CNC.round(s.cutLen / 1000, 2) + ' m'),
