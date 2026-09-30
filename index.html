@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EasyCNC</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Bibliothèques embarquées (js/vendor) : Clipper (contours), three.js (vue 3D). Aucune connexion internet requise. -->
+  <script src="js/vendor/clipper.js"></script>
+  <!-- three.js (vue 3D) -->
+  <script src="js/vendor/three.min.js"></script>
+  <script src="js/vendor/OrbitControls.js"></script>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg> EasyCNC</div>
+    <input id="projName" class="proj-name" value="Sans titre" spellcheck="false" aria-label="Nom du projet">
+    <nav class="tabs">
+      <button data-tab="design" class="on">1 · Dessiner</button>
+      <button data-tab="carve">2 · Fraiser</button>
+    </nav>
+    <div class="spacer"></div>
+    <button class="tbtn" id="btnUndo" title="Annuler (Ctrl+Z)">↶</button>
+    <button class="tbtn" id="btnRedo" title="Rétablir (Ctrl+Y)">↷</button>
+    <button class="tbtn txt" id="btnNew">Nouveau</button>
+    <button class="tbtn txt" id="btnOpen">Ouvrir</button>
+    <button class="tbtn txt" id="btnSave">Enregistrer</button>
+    <input type="file" id="fileOpen" accept=".json,.easycnc" hidden>
+    <input type="file" id="fileSvg" accept=".svg,image/svg+xml" hidden>
+  </header>
+
+  <div class="main">
+    <aside id="palette" class="palette"></aside>
+    <section class="stage mode-2d" id="stage">
+      <div class="pane" id="pane2d">
+        <canvas id="cv"></canvas>
+        <div class="zoombar">
+          <button id="zIn" title="Zoom +">+</button>
+          <button id="zOut" title="Zoom −">−</button>
+          <button id="zFit" title="Ajuster (double-clic)">⤢</button>
+          <button id="zMeas" title="Afficher / masquer les mesures">📏</button>
+        </div>
+        <div class="cursor-info" id="cursorInfo"></div>
+        <div class="hint" id="hint">Molette : zoom · glisser le matériau (fond beige) : le placer dans la zone · glisser hors du matériau : déplacer la vue · Maj+clic : multi-sélection · flèches : ajuster (Maj = 10 mm, Alt = 0,1 mm)</div>
+      </div>
+      <div class="pane" id="pane3d"></div>
+      <div class="viewmode" id="viewMode" hidden>
+        <button data-v="2d">Plan 2D</button><button data-v="3d">Vue 3D</button><button data-v="both">Les deux</button>
+      </div>
+    </section>
+    <aside id="panel" class="panel"></aside>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/geometry.js"></script>
+<script src="js/toolpath.js"></script>
+<script src="js/gcode.js"></script>
+<script src="js/grbl.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/view3d.js"></script>
+<script src="js/bitart.js"></script>
+<script src="js/svg.js"></script>
+<script src="js/managers.js"></script>
+<script src="js/carve.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
