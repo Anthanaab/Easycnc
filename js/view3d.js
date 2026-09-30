@@ -81,7 +81,7 @@
     }
     hm = {
       w, h, t, nx, ny, dx, dy, H: new Float32Array(nx * ny), moves, cum, total: cum[cum.length - 1] || 1,
-      done: 0, lastProg: -1, bit: job.bit, color: new THREE.Color(job.material.color), base: job.base || 0,
+      done: 0, lastProg: -1, bit: job.bit, color: new THREE.Color(job.material.color), base: job.base || 0, tabZ: job.tabZ || [],
     };
 
     // surface
@@ -301,7 +301,8 @@
 
   // met à jour la géométrie (hauteurs, normales, couleurs) depuis la carte
   function refresh() {
-    const { nx, ny, dx, dy, H, t, color, base } = hm;
+    const { nx, ny, dx, dy, H, t, color, base, tabZ } = hm;
+    const amber = new THREE.Color(0xf59e0b);
     const g = top.geometry;
     const pos = g.attributes.position.array, nor = g.attributes.normal.array, col = g.attributes.color.array;
     const bedC = new THREE.Color(0x3a4250);
@@ -319,6 +320,7 @@
         nor[o] = -gx * inv; nor[o + 1] = inv; nor[o + 2] = gy * inv;
         const hh = H[k];
         if (hh > base - 0.005) tmp.copy(color);
+        else if (tabZ.some((z) => Math.abs(hh - z) < 0.03)) tmp.copy(amber);
         else if (hh <= -t + 0.01) tmp.copy(bedC);
         else tmp.copy(color).lerp(cut, Math.min(1, 0.55 + ((base - hh) / t) * 0.45));
         col[o] = tmp.r; col[o + 1] = tmp.g; col[o + 2] = tmp.b;

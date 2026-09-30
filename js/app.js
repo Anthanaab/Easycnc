@@ -120,9 +120,16 @@
       ['pocket', 'Poche (évidement)'], ['none', 'Ne pas usiner'],
     ].map(([v, t]) => el('option', { value: v }, t)));
     cutSel.addEventListener('change', () => forEachSel((sh) => { sh.cut = { ...sh.cut, type: cutSel.value }; }));
+    // découpe traversante d'un contour : les tenons sont activés d'office (désactivables ensuite)
+    const CONTOURS = ['outside', 'inside', 'online'];
+    const autoTabs = (sh) => {
+      if (CONTOURS.includes(sh.cut.type) && sh.cut.depth >= st().t - 1e-6 && !(sh.cut.tabs && 'on' in sh.cut.tabs)) {
+        sh.cut = { ...sh.cut, tabs: { count: 4, width: 5, height: 2, on: true } };
+      }
+    };
     const fd = reg(field('Profondeur', {
       get: () => (E.selected()[0] ? E.selected()[0].cut.depth : null),
-      set: (v) => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: Math.min(v, st().t) }; }),
+      set: (v) => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: Math.min(v, st().t) }; autoTabs(sh); }),
       min: 0, unit: 'mm', disabled: () => !E.selection.length,
     }));
     // texte
@@ -186,7 +193,9 @@
     const ftH = reg(field('Épaisseur', { get: tabGet('height'), set: setTab('height'), min: 0.2, unit: 'mm' }));
     const tabDetails = el('div', {}, ftN.row, ftW.row, ftH.row,
       el('div', { class: 'muted' }, 'Ponts de matière laissés au fond pour que la pièce reste en place ; à recouper au cutter après l\'usinage.'));
-    const tabsBox = el('div', {}, el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0 2px' }, tabChk, 'Tenons de maintien'), tabDetails);
+    const tabHint = el('div', { class: 'warn' }, 'Découpe traversante sans tenons : la pièce peut bouger ou se coincer sous la fraise à la fin. ',
+      el('button', { class: 'btn sm', onclick: () => setTab('on')(true) }, 'Activer les tenons'));
+    const tabsBox = el('div', {}, tabHint, el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0 2px' }, tabChk, 'Tenons de maintien'), tabDetails);
 
     const cardShape = el('div', { class: 'card' },
       el('h3', {}, 'Forme'),
@@ -196,7 +205,7 @@
       el('div', { class: 'row' }, el('label', {}, 'Type'), el('div', { class: 'grow' }, cutSel)),
       fd.row, tabsBox,
       el('div', { class: 'btns' },
-        el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; }) }, 'Traversant'),
+        el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; autoTabs(sh); }) }, 'Traversant'),
         el('button', { class: 'btn sm', onclick: () => E.duplicate() }, 'Dupliquer'),
         el('button', { class: 'btn sm', onclick: () => E.reorder(1) }, 'Avancer'),
         el('button', { class: 'btn sm', onclick: () => E.reorder(-1) }, 'Reculer'),
@@ -223,6 +232,7 @@
         comboRow.previousSibling.style.display = comboRow.style.display = sel.length >= 2 ? '' : 'none';
         tabChk.checked = !!(sel[0].cut.tabs && sel[0].cut.tabs.on);
         tabDetails.style.display = tabChk.checked ? '' : 'none';
+        tabHint.style.display = tabOk && !tabChk.checked && sel[0].cut.depth >= st().t - 1e-6 ? '' : 'none';
         sidesRow.style.display = sel.length === 1 && (sel[0].kind === 'polygon' || sel[0].kind === 'star') ? '' : 'none';
       }
       fields.forEach((f) => f.refresh());

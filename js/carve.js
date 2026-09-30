@@ -371,7 +371,8 @@
       const stat = (a, b) => el('div', { class: 'stat' }, el('span', {}, a), el('b', {}, b));
       stats.append(stat('Durée estimée', CNC.fmtTime(s.sec)), stat('Longueur de coupe', CNC.round(s.cutLen / 1000, 2) + ' m'),
         stat('Profondeur max', CNC.round(-minZ, 2) + ' mm'), stat('Lignes de G-code', lines.length));
-      CNC.view3d.setJob({ stock: st, pos: CNC.stockPos(st, machine.area), area: machine.area, material, moves, bit, base: P().facing.on ? -P().facing.depth : 0 });
+      CNC.view3d.setJob({ stock: st, pos: CNC.stockPos(st, machine.area), area: machine.area, material, moves, bit, base: P().facing.on ? -P().facing.depth : 0,
+        tabZ: P().shapes.filter((q) => q.cut && q.cut.tabs && q.cut.tabs.on && ['outside', 'inside', 'online'].includes(q.cut.type)).map((q) => -(st.t - q.cut.tabs.height)) });
       E.setSim(moves, bit);
       slider.value = 1000;
       updateConn();

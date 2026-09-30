@@ -459,12 +459,13 @@
       ctx.setLineDash(s.cut && s.cut.type === 'none' ? [5, 4] : []);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (E.mode === 'design' && s.cut && s.cut.tabs && s.cut.tabs.on && s.cut.type !== 'pocket' && s.cut.type !== 'none') {
-        ctx.save(); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 6; ctx.lineCap = 'butt';
+      if (s.cut && s.cut.tabs && s.cut.tabs.on && s.cut.type !== 'pocket' && s.cut.type !== 'none') {
+        ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         for (const seg of G.tabMarks(s)) {
           ctx.beginPath();
           seg.forEach(([x, y], i) => { const [sx, sy] = w2s(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
-          ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 11; ctx.stroke(); // liseré pour rester lisible sur le matériau
+          ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 7; ctx.stroke();
         }
         ctx.restore();
       }
