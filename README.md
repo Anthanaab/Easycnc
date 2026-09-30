@@ -29,9 +29,22 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 | `js/gcode.js` | post-processeur GRBL |
 | `js/grbl.js` | Web Serial, streaming avec comptage de caractères, jog, pause/arrêt |
 | `js/editor.js` | canvas : édition, historique, simulation |
+| `js/booleans.js`, `js/text.js`, `js/view3d.js` | opérations sur les formes, texte, vue 3D |
 | `js/carve.js`, `js/app.js`, `js/managers.js` | interface |
+
+## Fonctions
+
+- **Formes** : rectangle, cercle, polygone, étoile, texte (5 polices embarquées), import SVG.
+- **Édition** : déplacer / redimensionner / pivoter, multi-sélection, alignement et répartition, fusion / soustraction / intersection.
+- **Usinage** : contour extérieur / intérieur, sur le tracé (gravure), poche, **tenons de maintien**, **surfaçage** du dessus.
+- **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
+- **Machine** : profils par marque, fraises, matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé.
 
 ## Limites actuelles
 
-Pas de texte (convertir en tracés dans un SVG), pas de tenons/onglets, pas de V-carve ni de 3D, simulation 2D seulement.
+Pas de V-carve ni de gravure 3D, simulation à résolution limitée (≈ 0,5 mm). Texte sur une seule police par forme, sans courbe.
 Testez toujours un premier programme **sans fraise / en l'air** avant de couper.
+
+## Licences des composants embarqués (`js/vendor/`)
+
+Clipper (Boost), three.js (MIT), opentype.js (MIT), polices Roboto (Apache 2.0), Oswald / Playfair Display / Pacifico (SIL OFL).

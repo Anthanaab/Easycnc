@@ -9,7 +9,7 @@
     polygon: { w: 30, h: 30, sides: 6 },
     star: { w: 36, h: 36, sides: 5 },
   };
-  G.names = { rect: 'Rectangle', ellipse: 'Cercle', polygon: 'Polygone', star: 'Étoile', path: 'Tracé' };
+  G.names = { rect: 'Rectangle', ellipse: 'Cercle', polygon: 'Polygone', star: 'Étoile', path: 'Tracé', text: 'Texte' };
 
   G.make = (kind, x, y, opts) => {
     const d = G.defaults[kind] || { w: 20, h: 20 };
@@ -55,6 +55,8 @@
         }
         return [{ pts, closed: true }];
       }
+      case 'text':
+        return CNC.text.get(s).polys;
       case 'path':
         return s.polys || [];
     }
@@ -108,6 +110,10 @@
   };
 
   G.hit = (s, x, y, tol) => {
+    if (s.kind === 'text') { // le texte se sélectionne en cliquant dans son cadre
+      const [lx, ly] = CNC.rotate(x - s.x, y - s.y, -s.rot);
+      return Math.abs(lx) <= s.w / 2 + tol && Math.abs(ly) <= s.h / 2 + tol;
+    }
     const polys = G.worldPolys(s);
     let inside = false;
     for (const p of polys) {
@@ -118,5 +124,33 @@
       }
     }
     return inside;
+  };
+})();
+
+// Repères des tenons sur le contour d'une forme (pour l'affichage) : liste de polylignes en mm
+(function () {
+  const CNC = window.CNC;
+  CNC.geom.tabMarks = (s) => {
+    const tb = s.cut && s.cut.tabs;
+    if (!tb || !tb.on) return [];
+    const out = [];
+    for (const p of CNC.geom.worldPolys(s)) {
+      if (!p.closed || p.pts.length < 3) continue;
+      const n = p.pts.length, cum = [0];
+      for (let i = 0; i < n; i++) cum.push(cum[i] + CNC.dist(p.pts[i], p.pts[(i + 1) % n]));
+      const L = cum[n], count = Math.max(1, Math.round(tb.count));
+      const at = (d) => {
+        d = ((d % L) + L) % L;
+        let i = 0; while (i < n - 1 && cum[i + 1] < d) i++;
+        const a = p.pts[i], b = p.pts[(i + 1) % n], t = (d - cum[i]) / ((cum[i + 1] - cum[i]) || 1);
+        return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      };
+      for (let j = 0; j < count; j++) {
+        const c = ((j + 0.5) * L) / count, w = Math.min(tb.width, (L / count) * 0.8), seg = [];
+        for (let k = 0; k <= 6; k++) seg.push(at(c - w / 2 + (w * k) / 6));
+        out.push(seg);
+      }
+    }
+    return out;
   };
 })();

@@ -33,6 +33,33 @@
     return bi;
   };
 
+  // Tenons : ponts de matière laissés sur le contour. `ring` reçoit `flags` (sommet dans un tenon) et `zTab`
+  // (profondeur maximale dans le tenon). Les sommets aux limites sont dupliqués pour des flancs verticaux.
+  function applyTabs(ring, tabs, zTab, r) {
+    const L = perimeter(ring), n = ring.length;
+    const count = Math.max(1, Math.round(tabs.count));
+    const span = Math.min(tabs.width + 2 * r, (L / count) * 0.8); // pont voulu + diamètre de la fraise
+    const iv = [];
+    for (let j = 0; j < count; j++) { const c = ((j + 0.5) * L) / count; iv.push([c - span / 2, c + span / 2]); }
+    const inTab = (s) => iv.some(([a, b]) => s > a && s < b);
+    const events = iv.flat().sort((x, y) => x - y);
+    const out = [], flags = [];
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      const p = ring[i], q = ring[(i + 1) % n], e = CNC.dist(p, q);
+      out.push(p); flags.push(inTab(s + 1e-9));
+      for (const ev of events) {
+        if (ev <= s + 1e-9 || ev >= s + e - 1e-9) continue;
+        const t = (ev - s) / e, pt = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+        out.push(pt); flags.push(inTab(ev - 1e-6));
+        out.push(pt.slice()); flags.push(inTab(ev + 1e-6));
+      }
+      s += e;
+    }
+    out.flags = flags; out.zTab = zTab;
+    return out;
+  }
+
   // Ajoute `laps` tours du contour, en interpolant Z de zFrom à zTo. Part de ring[0] (déjà dans out).
   function lap(ring, zFrom, zTo, laps, out) {
     const n = ring.length, total = perimeter(ring) * laps;
@@ -42,7 +69,9 @@
         const p = ring[i % n];
         s += CNC.dist(prev, p);
         prev = p;
-        out.push([p[0], p[1], zFrom + (zTo - zFrom) * (total ? s / total : 1)]);
+        let z = zFrom + (zTo - zFrom) * (total ? s / total : 1);
+        if (ring.flags && ring.flags[i % n]) z = Math.max(z, ring.zTab);
+        out.push([p[0], p[1], z]);
       }
     }
   }
@@ -113,7 +142,7 @@
   const PRIORITY = { pocket: 0, inside: 1, online: 2, outside: 3 };
 
   // shapes -> { paths, warnings }
-  TP.generate = ({ shapes, stock, bit, params, overcut }) => {
+  TP.generate = ({ shapes, stock, bit, params, overcut, facing }) => {
     const warnings = [];
     const r = bit.diameter / 2;
     const items = shapes
@@ -121,6 +150,15 @@
       .filter(({ s }) => s.cut && s.cut.type !== 'none' && s.cut.depth > 0)
       .sort((a, b) => PRIORITY[a.s.cut.type] - PRIORITY[b.s.cut.type] || a.i - b.i);
     const paths = [];
+
+    // surfaçage du dessus du matériau : poche sur tout le brut, débordant d'un rayon de fraise pour couvrir les bords
+    if (facing && facing.on && facing.depth > 0) {
+      const e = r;
+      const rect = [{ closed: true, pts: [[-e, -e], [stock.w + e, -e], [stock.w + e, stock.h + e], [-e, stock.h + e]] }];
+      const res = pocketPaths(toClip(rect), r, params.stepover, facing.depth, params.doc);
+      if (res) res.forEach((p) => paths.push(p));
+      if (bit.diameter < 6) warnings.push(`Surfaçage : une fraise de ${bit.diameter} mm est très lente pour surfacer. Une fraise ≥ 6 mm est conseillée.`);
+    }
 
     for (const { s } of items) {
       const label = s.name || G.names[s.kind] || 'Forme';
@@ -141,21 +179,27 @@
       }
       if (!closed.length) continue;
       const clip = toClip(closed);
+      // tenons de maintien (contours seulement, et uniquement si la coupe traverse jusqu'aux tenons)
+      const tb = s.cut.tabs;
+      const tabsWanted = !!(tb && tb.on && (type === 'outside' || type === 'inside' || type === 'online'));
+      const tabsOn = tabsWanted && D > stock.t - tb.height + 1e-6;
+      if (tabsWanted && !tabsOn) warnings.push(`« ${label} » : tenons sans effet (la profondeur n'atteint pas le bas du matériau).`);
+      const mk = (ring) => ringPath(tabsOn ? applyTabs(ring, tb, -(stock.t - tb.height), r) : ring, D, params.doc);
 
       if (type === 'online') {
         closed.forEach((p) => {
           let pts = p.pts.slice();
           if (CNC.dist(pts[0], pts[pts.length - 1]) < 1e-6) pts.pop();
-          if (pts.length > 2) paths.push(ringPath(pts, D, params.doc));
+          if (pts.length > 2) paths.push(mk(pts));
         });
       } else if (type === 'outside') {
         const rings = offset(clip, r);
         if (!rings.length) warnings.push(`« ${label} » : contour introuvable.`);
-        rings.forEach((ring) => paths.push(ringPath(ring, D, params.doc)));
+        rings.forEach((ring) => paths.push(mk(ring)));
       } else if (type === 'inside') {
         const rings = offset(clip, -r);
         if (!rings.length) warnings.push(`« ${label} » : trop petit pour la fraise (Ø ${bit.diameter} mm), ignoré.`);
-        rings.forEach((ring) => paths.push(ringPath(ring.slice().reverse(), D, params.doc)));
+        rings.forEach((ring) => paths.push(mk(ring.slice().reverse())));
       } else if (type === 'pocket') {
         const res = pocketPaths(clip, r, params.stepover, D, params.doc);
         if (!res) warnings.push(`« ${label} » : trop petit pour la fraise (Ø ${bit.diameter} mm), ignoré.`);

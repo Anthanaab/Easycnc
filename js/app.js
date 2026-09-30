@@ -16,6 +16,7 @@
     sMax: null, // S maxi détecté ($30)
     origin: 'bl',
     overcut: 0.2, // sur-profondeur pour les découpes traversantes
+    facing: { on: false, depth: 0.5 }, // surfaçage du dessus
   });
 
   App.project = null;
@@ -124,13 +125,76 @@
       set: (v) => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: Math.min(v, st().t) }; }),
       min: 0, unit: 'mm', disabled: () => !E.selection.length,
     }));
+    // texte
+    const txtIn = el('textarea', { rows: 2, spellcheck: 'false', style: 'width:100%;resize:vertical' });
+    const fontSel = el('select', {}, CNC.text.fonts.map(([v, t]) => el('option', { value: v }, t)));
+    const editText = (fn) => { E.snapshot(); const sh = E.selected()[0]; fn(sh); CNC.text.fit(sh); E.changed(); E.on.select(); };
+    txtIn.addEventListener('change', () => editText((sh) => { sh.text = txtIn.value; }));
+    fontSel.addEventListener('change', () => editText((sh) => { sh.font = fontSel.value; }));
+    const fSize = reg(field('Taille', { get: () => (one() && one().kind === 'text' ? one().size : null), set: (v) => editText((sh) => { sh.size = v; }), min: 1, unit: 'mm' }));
+    const textBox = el('div', {}, el('h3', { style: 'margin-top:14px' }, 'Texte'), txtIn,
+      el('div', { class: 'row' }, el('label', {}, 'Police'), el('div', { class: 'grow' }, fontSel)), fSize.row,
+      el('div', { class: 'muted' }, 'Astuce : un texte en « Poche » demande une petite fraise ; la gravure en V (« Sur le tracé ») convient aux lettres fines.'));
+
+    // alignement, répartition, opérations booléennes
+    const doAlign = (dir) => {
+      const sel = E.selected();
+      if (!sel.length) return;
+      E.snapshot();
+      const ref = sel.length > 1 ? CNC.bool.selectionBox(sel) : { x0: 0, y0: 0, x1: st().w, y1: st().h };
+      CNC.bool.align(sel, dir, ref);
+      E.changed(); E.on.select();
+    };
+    const doDist = (axis) => { E.snapshot(); CNC.bool.distribute(E.selected(), axis); E.changed(); E.on.select(); };
+    const doCombine = (mode) => {
+      const sel = E.project.shapes.filter((q) => E.selection.includes(q.id)); // dans l'ordre de dessin
+      if (sel.length < 2) return;
+      let res;
+      try { res = CNC.bool.combine(mode, sel); } catch (e) { return alert('Opération impossible : ' + e.message); }
+      if (!res) return alert('Le résultat est vide (les formes ne se recouvrent pas ?).');
+      E.snapshot();
+      const at = E.project.shapes.indexOf(sel[0]);
+      E.project.shapes = E.project.shapes.filter((q) => !E.selection.includes(q.id));
+      E.project.shapes.splice(Math.min(at, E.project.shapes.length), 0, res);
+      E.selection = [res.id];
+      E.on.select(); E.changed();
+    };
+    const ab = (label, fn, title) => el('button', { class: 'btn sm', title, onclick: fn }, label);
+    const alignRow = el('div', { class: 'btns' },
+      ab('⇤ Gauche', () => doAlign('left')), ab('↔ Centre', () => doAlign('hcenter')), ab('Droite ⇥', () => doAlign('right')),
+      ab('⤒ Haut', () => doAlign('top')), ab('↕ Milieu', () => doAlign('vcenter')), ab('Bas ⤓', () => doAlign('bottom')));
+    const distRow = el('div', { class: 'btns' }, ab('Répartir ↔', () => doDist('h'), 'Espaces égaux horizontalement'), ab('Répartir ↕', () => doDist('v'), 'Espaces égaux verticalement'));
+    const comboRow = el('div', { class: 'btns' },
+      ab('Fusionner', () => doCombine('union'), 'Réunit les formes en une seule'),
+      ab('Soustraire', () => doCombine('subtract'), 'Retire les formes suivantes de la première (celle du dessous)'),
+      ab('Intersection', () => doCombine('intersect'), 'Ne garde que la partie commune'));
+    const toolsBox = el('div', {},
+      el('h3', { style: 'margin-top:14px' }, 'Alignement'),
+      el('div', { class: 'muted' }, 'Une forme : alignée sur le matériau. Plusieurs : alignées entre elles.'),
+      alignRow, distRow,
+      el('div', { class: 'muted', style: 'margin-top:8px' }, 'Combiner (au moins 2 formes ; « Soustraire » retire les suivantes de la première)'), comboRow);
+
+    // tenons de maintien
+    const tabDef = { on: false, count: 4, width: 5, height: 2 };
+    const tabsOf = (sh) => ({ ...tabDef, ...((sh.cut && sh.cut.tabs) || {}) });
+    const setTab = (k) => (v) => forEachSel((sh) => { sh.cut = { ...sh.cut, tabs: { ...tabsOf(sh), [k]: v } }; });
+    const tabGet = (k) => () => (E.selected()[0] ? tabsOf(E.selected()[0])[k] : null);
+    const tabChk = el('input', { type: 'checkbox' });
+    tabChk.addEventListener('change', () => setTab('on')(tabChk.checked));
+    const ftN = reg(field('Nombre', { get: tabGet('count'), set: (v) => setTab('count')(Math.max(1, Math.round(v))), min: 1, step: 1 }));
+    const ftW = reg(field('Pont', { get: tabGet('width'), set: setTab('width'), min: 0.5, unit: 'mm' }));
+    const ftH = reg(field('Épaisseur', { get: tabGet('height'), set: setTab('height'), min: 0.2, unit: 'mm' }));
+    const tabDetails = el('div', {}, ftN.row, ftW.row, ftH.row,
+      el('div', { class: 'muted' }, 'Ponts de matière laissés au fond pour que la pièce reste en place ; à recouper au cutter après l\'usinage.'));
+    const tabsBox = el('div', {}, el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0 2px' }, tabChk, 'Tenons de maintien'), tabDetails);
+
     const cardShape = el('div', { class: 'card' },
       el('h3', {}, 'Forme'),
       el('div', { class: 'grid2' }, fX.row, fY.row, fw.row, fh.row),
-      fr.row, sidesRow,
+      fr.row, sidesRow, textBox, toolsBox,
       el('h3', { style: 'margin-top:14px' }, 'Usinage'),
       el('div', { class: 'row' }, el('label', {}, 'Type'), el('div', { class: 'grow' }, cutSel)),
-      fd.row,
+      fd.row, tabsBox,
       el('div', { class: 'btns' },
         el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; }) }, 'Traversant'),
         el('button', { class: 'btn sm', onclick: () => E.duplicate() }, 'Dupliquer'),
@@ -150,6 +214,15 @@
       cardHelp.style.display = sel.length ? 'none' : '';
       if (sel.length) {
         cutSel.value = sel[0].cut.type;
+        const isText = sel.length === 1 && sel[0].kind === 'text';
+        textBox.style.display = isText ? '' : 'none';
+        if (isText) { if (document.activeElement !== txtIn) txtIn.value = sel[0].text; fontSel.value = sel[0].font; }
+        const tabOk = ['outside', 'inside', 'online'].includes(sel[0].cut.type);
+        tabsBox.style.display = tabOk ? '' : 'none';
+        distRow.style.display = sel.length >= 3 ? '' : 'none';
+        comboRow.previousSibling.style.display = comboRow.style.display = sel.length >= 2 ? '' : 'none';
+        tabChk.checked = !!(sel[0].cut.tabs && sel[0].cut.tabs.on);
+        tabDetails.style.display = tabChk.checked ? '' : 'none';
         sidesRow.style.display = sel.length === 1 && (sel[0].kind === 'polygon' || sel[0].kind === 'star') ? '' : 'none';
       }
       fields.forEach((f) => f.refresh());
@@ -163,6 +236,7 @@
     ellipse: '<circle cx="16" cy="16" r="10"/>',
     polygon: '<path d="M16 5l9.5 6.9-3.6 11.2H10.1L6.5 11.9z"/>',
     star: '<path d="M16 4l3.5 8 8.5.8-6.4 5.7 1.9 8.5L16 22.6 8.5 27l1.9-8.5L4 12.8l8.5-.8z"/>',
+    text: '<path d="M7 8h18M16 8v17M12 25h8"/>',
     svg: '<path d="M8 5h11l6 6v16H8z"/><path d="M19 5v6h6"/><path d="M12 20l3-4 3 3 2-2"/>',
   };
   function buildPalette() {
@@ -181,6 +255,10 @@
       btn(ICONS.ellipse, 'Cercle', add('ellipse')),
       btn(ICONS.polygon, 'Polygone', add('polygon')),
       btn(ICONS.star, 'Étoile', add('star')),
+      btn(ICONS.text, 'Texte', () => {
+        const st = App.project.stock, n = App.project.shapes.length;
+        E.addShape(CNC.text.make(st.w / 2 + (n % 5) * 6, st.h / 2 - (n % 5) * 6, st));
+      }),
       el('hr'),
       btn(ICONS.svg, 'Import SVG', () => $('#fileSvg').click(), 'Importer un fichier SVG'));
   }

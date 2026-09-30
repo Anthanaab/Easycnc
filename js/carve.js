@@ -79,10 +79,18 @@
     const originSel = select((v) => { P().origin = v; recompute(); });
     originSel.append(el('option', { value: 'bl' }, 'Coin bas-gauche du matériau'), el('option', { value: 'center' }, 'Centre du matériau'));
     const sInfo = el('div', { class: 'muted' });
+    const facChk = el('input', { type: 'checkbox' });
+    facChk.addEventListener('change', () => { P().facing.on = facChk.checked; facDepth.row.style.display = facChk.checked ? '' : 'none'; recompute(); });
+    const facDepth = App.field('Profondeur', { get: () => P().facing.depth, set: (v) => { P().facing.depth = v; recompute(); }, unit: 'mm', min: 0.05 });
+    pfields.push(facDepth);
+    const facBox = el('div', {},
+      el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0 2px' }, facChk, 'Surfacer le dessus avant l\'usinage'),
+      facDepth.row,
+      el('div', { class: 'muted' }, 'Passe de mise à plat sur tout le matériau (fraise ≥ 6 mm conseillée). Les profondeurs des formes restent comptées depuis le dessus d\'origine (Z0).'));
     const c3 = card(3, 'Paramètres de coupe',
       pf('Broche', 'rpm', 'tr/min', 1), pf('Avance', 'feed', 'mm/min', 1), pf('Plongée', 'plunge', 'mm/min', 1),
       pf('Passe', 'doc', 'mm', 0.01), pf('Recouvrt.', 'stepover', 'mm', 0.01), pf('Dégagement', 'safeZ', 'mm', 1),
-      row('Origine X0 Y0', originSel), sInfo,
+      row('Origine X0 Y0', originSel), sInfo, facBox,
       el('div', { class: 'btns' }, el('button', { class: 'btn sm', onclick: () => { P().over = {}; refreshParams(); recompute(); } }, 'Valeurs automatiques')));
 
     // ---------- 4. Aperçu ----------
@@ -333,7 +341,7 @@
       const machine = App.machine(), bit = App.bit(), material = App.material(), params = App.params(), st = P().stock;
       warnBox.innerHTML = ''; stats.innerHTML = '';
       const warns = [];
-      const res = TP.generate({ shapes: P().shapes, stock: st, bit, params, overcut: P().overcut });
+      const res = TP.generate({ shapes: P().shapes, stock: st, bit, params, overcut: P().overcut, facing: P().facing });
       warns.push(...res.warnings);
       if (!res.paths.length) {
         job = null; E.sim = null; E.render();
@@ -363,7 +371,7 @@
       const stat = (a, b) => el('div', { class: 'stat' }, el('span', {}, a), el('b', {}, b));
       stats.append(stat('Durée estimée', CNC.fmtTime(s.sec)), stat('Longueur de coupe', CNC.round(s.cutLen / 1000, 2) + ' m'),
         stat('Profondeur max', CNC.round(-minZ, 2) + ' mm'), stat('Lignes de G-code', lines.length));
-      CNC.view3d.setJob({ stock: st, pos: CNC.stockPos(st, machine.area), area: machine.area, material, moves, bit });
+      CNC.view3d.setJob({ stock: st, pos: CNC.stockPos(st, machine.area), area: machine.area, material, moves, bit, base: P().facing.on ? -P().facing.depth : 0 });
       E.setSim(moves, bit);
       slider.value = 1000;
       updateConn();
@@ -378,7 +386,7 @@
     function refreshAll() {
       fillMachines(); fillBits();
       matSel.value = P().stock.materialId;
-      originSel.value = P().origin;
+      originSel.value = P().origin; facChk.checked = !!P().facing.on; facDepth.row.style.display = P().facing.on ? '' : 'none';
       const m = App.machine(), b = App.bit();
       machInfo.textContent = `Zone ${m.area.x} × ${m.area.y} × ${m.area.z} mm · avance max ${m.maxFeed} mm/min · broche ${m.spindle.mode === 'grbl' ? 'pilotée' : m.spindle.mode === 'manual' ? 'manuelle' : '—'}`;
       machWarn.innerHTML = '';
