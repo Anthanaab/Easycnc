@@ -78,16 +78,42 @@
     { id: 'pcb', name: 'Cuivre / circuit imprimé', color: '#c7833a', chip: 0.004, doc: 0.10, stepover: 0.30, rpm: 10000, plunge: 0.3 },
   ];
 
+  // Catalogue de fraises courantes pour pince ER11 (queues 3,175 / 4 / 6 mm).
+  // geom : 'down' = hélice descendante (surface du dessus propre), 'compression' = haut + bas (contreplaqué / mélaminé)
+  const flat = (d, fl, cut, shank, extra) => ({
+    id: `flat${fl}${(extra && extra.geom) ? extra.geom[0] : ''}-${String(d).replace('.', '')}`,
+    name: `Droite ${String(d).replace('.', ',')} mm - ${fl} dent${fl > 1 ? 's' : ''}${extra && extra.label ? ' ' + extra.label : ''}`,
+    type: 'flat', diameter: d, flutes: fl, cutLength: cut, shank, ...(extra && extra.geom ? { geom: extra.geom } : {}),
+  });
+  const ball = (d, cut, shank) => ({ id: `ball2-${String(d).replace('.', '')}`, name: `Sphérique ${String(d).replace('.', ',')} mm - 2 dents`, type: 'ball', diameter: d, flutes: 2, cutLength: cut, shank });
+  const vb = (angle, tip, ref, doc, id) => ({
+    id: id || `v${angle}`, name: `Gravure V ${angle}° (pointe ${String(tip).replace('.', ',')} mm)`,
+    type: 'vbit', angle, diameter: tip, refDia: ref, docMax: doc, flutes: 1, cutLength: 6, shank: 3.175,
+  });
   const BITS = [
-    { id: 'flat2-3175', name: 'Droite 3,175 mm (1/8") - 2 dents', type: 'flat', diameter: 3.175, flutes: 2, cutLength: 12, shank: 3.175 },
-    { id: 'flat1-3175', name: 'Droite 3,175 mm - 1 dent (plastique/alu)', type: 'flat', diameter: 3.175, flutes: 1, cutLength: 12, shank: 3.175 },
-    { id: 'flat4-3175', name: 'Droite 3,175 mm - 4 dents (bois dur)', type: 'flat', diameter: 3.175, flutes: 4, cutLength: 12, shank: 3.175 },
-    { id: 'flat2-2', name: 'Droite 2 mm - 2 dents', type: 'flat', diameter: 2, flutes: 2, cutLength: 8, shank: 3.175 },
-    { id: 'flat2-1', name: 'Droite 1 mm - 2 dents', type: 'flat', diameter: 1, flutes: 2, cutLength: 4, shank: 3.175 },
-    { id: 'flat2-6', name: 'Droite 6 mm - 2 dents', type: 'flat', diameter: 6, flutes: 2, cutLength: 22, shank: 6 },
-    { id: 'ball2-3175', name: 'Sphérique 3,175 mm - 2 dents', type: 'ball', diameter: 3.175, flutes: 2, cutLength: 12, shank: 3.175 },
-    { id: 'v30', name: 'Gravure V 30° (pointe 0,2 mm)', type: 'vbit', angle: 30, diameter: 0.2, refDia: 1.5, docMax: 0.4, flutes: 1, cutLength: 6, shank: 3.175 },
-    { id: 'v60', name: 'Gravure V 60° (pointe 0,2 mm)', type: 'vbit', angle: 60, diameter: 0.2, refDia: 2.0, docMax: 0.5, flutes: 1, cutLength: 6, shank: 3.175 },
+    // --- droites, 2 dents (usage général) ---
+    flat(0.8, 2, 3, 3.175), flat(1, 2, 4, 3.175), flat(1.5, 2, 6, 3.175), flat(2, 2, 8, 3.175), flat(2.5, 2, 10, 3.175),
+    { ...flat(3.175, 2, 12, 3.175), name: 'Droite 3,175 mm (1/8") - 2 dents' },
+    flat(4, 2, 15, 4), flat(6, 2, 22, 6),
+    // --- droites, 1 dent (plastiques, aluminium : évacuation maximale des copeaux) ---
+    flat(2, 1, 8, 3.175, { label: '(plastique/alu)' }),
+    { ...flat(3.175, 1, 12, 3.175), name: 'Droite 3,175 mm - 1 dent (plastique/alu)' },
+    flat(4, 1, 15, 4, { label: '(plastique/alu)' }),
+    // --- droites, 3 et 4 dents (finition) ---
+    flat(3.175, 3, 12, 3.175), { ...flat(3.175, 4, 12, 3.175), name: 'Droite 3,175 mm - 4 dents (bois dur)' }, flat(6, 4, 22, 6, { label: '(bois dur/alu)' }),
+    // --- hélices spéciales ---
+    flat(3.175, 2, 12, 3.175, { geom: 'down', label: 'hélice descendante' }),
+    flat(2, 2, 8, 3.175, { geom: 'down', label: 'hélice descendante' }),
+    flat(3.175, 2, 12, 3.175, { geom: 'compression', label: 'compression' }),
+    flat(6, 2, 22, 6, { geom: 'compression', label: 'compression' }),
+    // --- surfaçage ---
+    { id: 'surf3-12', name: 'Surfaçage Ø 12 mm - 3 dents (queue 6)', type: 'flat', diameter: 12, flutes: 3, cutLength: 5, shank: 6, geom: 'surface' },
+    // --- sphériques ---
+    ball(1, 4, 3.175), ball(1.5, 6, 3.175), ball(2, 8, 3.175), ball(3.175, 12, 3.175), ball(4, 15, 4), ball(6, 22, 6),
+    // --- gravure / chanfrein en V ---
+    vb(15, 0.1, 1.0, 0.3), vb(20, 0.1, 1.2, 0.3, 'v20'), vb(30, 0.2, 1.5, 0.4), vb(45, 0.2, 1.8, 0.5), vb(60, 0.2, 2.0, 0.5),
+    vb(90, 0.2, 3.0, 0.6),
+    { ...vb(90, 0.5, 3.0, 0.8, 'v90c'), name: 'Chanfreinage V 90° (pointe 0,5 mm)' },
   ].map((b) => ({ builtin: true, ...b }));
 
   CNC.data = { MACHINES, MATERIALS, BITS };

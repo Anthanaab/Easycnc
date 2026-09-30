@@ -38,7 +38,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 - **Édition** : déplacer / redimensionner / pivoter, multi-sélection, alignement et répartition, fusion / soustraction / intersection.
 - **Usinage** : contour extérieur / intérieur, sur le tracé (gravure), poche, **tenons de maintien**, **surfaçage** du dessus.
 - **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
-- **Machine** : profils par marque, fraises, matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé.
+- **Machine** : profils par marque, 33 fraises (droites, sphériques, V, hélices spéciales, surfaçage), matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé, **essai à blanc**, chargement d’un fichier G-code, sauvegarde/restauration des réglages.
 
 ## Limites actuelles
 

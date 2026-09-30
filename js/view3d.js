@@ -53,6 +53,8 @@
     camera.near = 1; camera.far = D * 20; camera.updateProjectionMatrix();
     controls.update();
   }
+  V.reframe = () => { userCam = false; frame(); V.invalidate(); };
+
   V.invalidate = () => {
     if (!ready || raf) return;
     raf = requestAnimationFrame(() => { raf = 0; renderer.render(scene, camera); });

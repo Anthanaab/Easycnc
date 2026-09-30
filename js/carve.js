@@ -49,12 +49,14 @@
     const bitSel = select((v) => { P().bitId = v; P().over = {}; refreshAll(); recompute(); });
     const fillBits = () => {
       bitSel.innerHTML = '';
-      CNC.bits().forEach((b) => bitSel.append(el('option', { value: b.id }, b.name)));
+      const groups = {};
+      CNC.bits().forEach((b) => (groups[b.builtin ? CNC.bitCategory(b) : 'Mes fraises'] = groups[b.builtin ? CNC.bitCategory(b) : 'Mes fraises'] || []).push(b));
+      for (const [g, items] of Object.entries(groups)) bitSel.append(el('optgroup', { label: g }, items.map((b) => el('option', { value: b.id }, b.name))));
       bitSel.value = CNC.bit(P().bitId).id;
     };
     const manageBits = () => CNC.openManager({
       title: 'Fraises', all: CNC.bits, user: CNC.userBits, save: CNC.saveUserBits,
-      fields: CNC.bitFields, group: (b) => ({ flat: 'Droites', ball: 'Sphériques', vbit: 'Gravure en V' }[b.type] || 'Autres'), label: (b) => b.name,
+      fields: CNC.bitFields, group: (b) => (b.builtin ? CNC.bitCategory(b) : 'Mes fraises'), label: (b) => b.name,
       blank: () => ({ id: CNC.uid(), builtin: false, name: 'Nouvelle fraise', type: 'flat', diameter: 3.175, flutes: 2, cutLength: 12, shank: 3.175 }),
       current: () => P().bitId,
       onUse: (id) => { P().bitId = id; P().over = {}; refreshAll(); recompute(); },
@@ -247,6 +249,30 @@
     const cmdIn = el('input', { type: 'text', placeholder: 'Commande manuelle (Entrée)…' });
     const settingsNote = el('div');
     const homeBtn = el('button', { class: 'btn sm', onclick: cmd('$H') }, 'Homing $H');
+    // essai à blanc + fichier G-code externe
+    let dryZ = 10, extJob = null;
+    const dryChk = el('input', { type: 'checkbox' });
+    const dryOff = App.field('Relever de', { get: () => dryZ, set: (v) => { dryZ = v; }, unit: 'mm', min: 1 });
+    dryOff.refresh();
+    const extIn = el('input', { type: 'file', accept: '.nc,.gcode,.gc,.ngc,.tap,.txt', hidden: true });
+    const extLabel = el('div', { class: 'muted' });
+    const extClear = el('button', { class: 'btn sm', style: 'display:none', onclick: () => { extJob = null; extRefresh(); updateConn(); } }, 'Revenir au projet');
+    const extRefresh = () => {
+      extLabel.textContent = extJob ? `Fichier chargé : ${extJob.name} (${extJob.lines.length} lignes) - remplace le projet` : '';
+      extClear.style.display = extJob ? '' : 'none';
+      dryChk.disabled = !!extJob;
+    };
+    extIn.addEventListener('change', async () => {
+      const f = extIn.files[0]; extIn.value = '';
+      if (!f) return;
+      extJob = { name: f.name, lines: (await f.text()).split(/\r?\n/) };
+      extRefresh(); updateConn();
+    });
+    const dryBox = el('div', {},
+      el('label', { style: 'display:flex;gap:8px;align-items:flex-start;margin:8px 0 2px' }, dryChk, 'Essai à blanc : parcours relevé, broche non démarrée (à faire avant la première vraie coupe)'),
+      dryOff.row,
+      el('div', { class: 'btns' }, el('button', { class: 'btn sm', onclick: () => extIn.click() }, 'Charger un fichier G-code…'), extClear, extIn), extLabel);
+
     const c5 = card(5, 'Usinage',
       el('div', { class: 'row' }, connBtn, stateBadge),
       el('div', {}, dro && el('div', { class: 'dro' }, dro)),
@@ -258,6 +284,7 @@
         jogBtn('↙', -1, -1, 0), jogBtn('Y−', 0, -1, 0), jogBtn('↘', 1, -1, 0), el('span')),
       el('div', { class: 'muted' }, 'Positionnez la fraise à l\'origine choisie, puis définissez le zéro :'),
       el('div', { class: 'btns' }, zeroBtns, probeBtn, homeBtn, el('button', { class: 'btn sm', onclick: cmd('$X') }, 'Déverrouiller $X'), el('button', { class: 'btn sm', onclick: cmd('$$') }, 'Lire les réglages')),
+      dryBox,
       el('div', { class: 'btns' }, startBtn, pauseBtn, stopBtn),
       el('div', { class: 'progress' }, bar), progText, consoleBox, cmdIn);
 
@@ -278,7 +305,7 @@
       const c = grbl.connected, running = !!grbl.job;
       connBtn.textContent = c ? 'Déconnecter' : 'Connecter la machine';
       connBtn.classList.toggle('primary', !c);
-      startBtn.disabled = !c || running || !job;
+      startBtn.disabled = !c || running || (!job && !extJob);
       pauseBtn.disabled = !running;
       stopBtn.disabled = !c;
       homeBtn.style.display = App.machine().homing ? '' : 'none';
@@ -301,17 +328,23 @@
     pauseBtn.addEventListener('click', () => { if (!grbl.job) return; grbl.job.paused ? grbl.resume() : grbl.pause(); updateConn(); });
     stopBtn.addEventListener('click', () => { grbl.stop(); log('i', 'Arrêt demandé (reset). Utilisez « Déverrouiller $X » puis relevez Z.'); });
     startBtn.addEventListener('click', async () => {
-      if (!job) return;
-      const ok = await CNC.confirmModal('Démarrer l\'usinage ?', el('div', {},
-        el('div', {}, 'Vérifiez avant de lancer :'),
-        el('ul', { class: 'checks' },
-          el('li', {}, `Fraise montée : ${App.bit().name}`),
-          el('li', {}, `Matériau fixé solidement : ${App.material().name}, ${P().stock.w} × ${P().stock.h} × ${P().stock.t} mm`),
-          el('li', {}, `Zéro défini sur ${P().origin === 'center' ? 'le centre' : 'le coin bas-gauche'} en X/Y et sur le dessus du matériau en Z`),
-          el('li', {}, 'Broche ' + (App.machine().spindle.mode === 'manual' ? 'à démarrer à la main quand le programme se met en pause' : 'commandée par le programme')),
-          el('li', {}, 'Lunettes de protection, aspiration, arrêt d\'urgence à portée de main'))), 'Lancer');
+      if (!job && !extJob) return;
+      const dry = !extJob && dryChk.checked;
+      const items = dry
+        ? [`Le parcours sera relevé de ${dryZ} mm et la broche ne sera PAS démarrée : la fraise passe au-dessus du matériau`,
+           `Zéro défini sur ${P().origin === 'center' ? 'le centre' : 'le coin bas-gauche'} en X/Y et sur le dessus du matériau en Z`,
+           'Vérifiez que rien ne gêne les déplacements (serre-joints, brides…)', 'Arrêt d\'urgence à portée de main']
+        : [`Fraise montée : ${App.bit().name}`,
+           `Matériau fixé solidement : ${App.material().name}, ${P().stock.w} × ${P().stock.h} × ${P().stock.t} mm`,
+           `Zéro défini sur ${P().origin === 'center' ? 'le centre' : 'le coin bas-gauche'} en X/Y et sur le dessus du matériau en Z`,
+           'Broche ' + (App.machine().spindle.mode === 'manual' ? 'à démarrer à la main quand le programme se met en pause' : 'commandée par le programme'),
+           'Lunettes de protection, aspiration, arrêt d\'urgence à portée de main'];
+      if (extJob) items.unshift(`Fichier G-code externe : ${extJob.name} (non vérifié par EasyCNC)`);
+      const ok = await CNC.confirmModal(dry ? 'Lancer l\'essai à blanc ?' : 'Démarrer l\'usinage ?', el('div', {},
+        el('div', {}, 'Vérifiez avant de lancer :'), el('ul', { class: 'checks' }, items.map((t) => el('li', {}, t)))), 'Lancer');
       if (!ok) return;
-      grbl.startJob(CNC.gcode.clean(job.lines));
+      const lines = extJob ? extJob.lines : dry ? CNC.gcode.generate({ ...job.args, dry: { zOffset: dryZ } }) : job.lines;
+      grbl.startJob(CNC.gcode.clean(lines));
       updateConn();
     });
 
@@ -366,7 +399,7 @@
       const origin = P().origin === 'center' ? { x: st.w / 2, y: st.h / 2, label: 'centre du matériau' } : { x: 0, y: 0, label: 'coin bas-gauche du matériau' };
       const lines = CNC.gcode.generate({ moves, machine, params, bit, material, name: P().name, origin });
       const s = TP.stats(moves, params, machine.rapid || 1500);
-      job = { lines, moves, stats: s };
+      job = { lines, moves, stats: s, args: { moves, machine, params, bit, material, name: P().name, origin } };
       warns.forEach((w) => warnBox.append(el('div', { class: 'warn' }, w)));
       const stat = (a, b) => el('div', { class: 'stat' }, el('span', {}, a), el('b', {}, b));
       stats.append(stat('Durée estimée', CNC.fmtTime(s.sec)), stat('Longueur de coupe', CNC.round(s.cutLen / 1000, 2) + ' m'),

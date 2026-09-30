@@ -92,3 +92,27 @@
     return box;
   };
 })();
+
+// Catégories de fraises (liste déroulante et gestionnaire) + explications des hélices spéciales
+(function () {
+  const CNC = window.CNC;
+  CNC.bitCategory = (b) => {
+    if (b.type === 'vbit') return 'Gravure et chanfrein en V';
+    if (b.type === 'ball') return 'Sphériques';
+    if (b.geom === 'surface') return 'Surfaçage';
+    if (b.geom === 'down' || b.geom === 'compression') return 'Hélices spéciales';
+    return b.flutes === 1 ? 'Droites 1 dent (plastique, alu)' : 'Droites 2 à 4 dents';
+  };
+  const GEOM = {
+    down: 'Hélice descendante : pousse les copeaux vers le bas. Dessus du matériau très propre (contreplaqué, stratifié), mais évacuation moins bonne dans les poches profondes.',
+    compression: 'Compression : hélice montante en bas et descendante en haut. Les deux faces sont propres, idéale pour le contreplaqué et le mélaminé en découpe traversante.',
+    surface: 'Fraise à surfacer : grand diamètre, faible hauteur de coupe. Pour mettre à plat le dessus du matériau en peu de passes (utilisez l\'option Surfaçage).',
+  };
+  const base = CNC.bitInfo;
+  CNC.bitInfo = (b) => {
+    const r = base(b);
+    if (b.geom && GEOM[b.geom]) r.text.unshift(GEOM[b.geom]);
+    if (b.type === 'vbit' && b.angle) r.text.push(`Angle ${b.angle}° : ${b.angle <= 30 ? 'traits fins et détails' : b.angle <= 60 ? 'gravure polyvalente' : 'chanfreins et lettres larges'}.`);
+    return r;
+  };
+})();

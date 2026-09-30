@@ -377,6 +377,35 @@
     $('#zIn').onclick = () => E.zoom(1.25);
     $('#zOut').onclick = () => E.zoom(0.8);
     $('#zFit').onclick = () => E.fit();
+    // sauvegarde / restauration de tous les réglages stockés dans le navigateur
+    const reset3d = CNC.el('button', { class: 'meas3d', style: 'top:54px', title: 'Recentrer la vue 3D' }, '⤢');
+    $('#pane3d').append(reset3d);
+    reset3d.onclick = () => CNC.view3d.reframe();
+    const backupFile = CNC.el('input', { type: 'file', accept: '.json', hidden: true });
+    document.body.append(backupFile);
+    backupFile.onchange = async () => {
+      try {
+        const data = JSON.parse(await backupFile.files[0].text());
+        if (data.app !== 'easycnc-backup' || typeof data.items !== 'object') throw new Error('fichier de sauvegarde non reconnu');
+        if (!confirm('Remplacer vos profils, fraises et projet actuels par cette sauvegarde ?')) return;
+        for (const [k, v] of Object.entries(data.items)) if (k.startsWith('easycnc.')) localStorage.setItem(k, v);
+        location.reload();
+      } catch (e) { alert('Restauration impossible : ' + e.message); }
+      backupFile.value = '';
+    };
+    $('#btnBackup').onclick = () => CNC.modal({
+      title: 'Sauvegarde des réglages',
+      body: CNC.el('div', {},
+        CNC.el('p', {}, 'Vos profils machines, fraises perso, réglages du palpeur et le projet en cours sont stockés dans ce navigateur. Exportez-les pour les conserver ou les transférer sur un autre PC.'),
+        CNC.el('div', { class: 'btns' },
+          CNC.el('button', { class: 'btn primary', onclick: () => {
+            const items = {};
+            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('easycnc.')) items[k] = localStorage.getItem(k); }
+            CNC.download('easycnc-sauvegarde.json', JSON.stringify({ app: 'easycnc-backup', version: 1, items }, null, 1), 'application/json');
+          } }, 'Exporter tous mes réglages'),
+          CNC.el('button', { class: 'btn', onclick: () => backupFile.click() }, 'Importer une sauvegarde…'))),
+      buttons: [{ label: 'Fermer' }],
+    });
     const measBtn3d = CNC.el('button', { class: 'meas3d', title: 'Afficher / masquer les mesures' }, '📏');
     $('#pane3d').append(measBtn3d);
     const applyMeasures = (on) => {

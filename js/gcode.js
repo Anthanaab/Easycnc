@@ -5,10 +5,14 @@
 
   CNC.gcode = {
     // origin: décalage (mm) soustrait aux coordonnées du matériau pour obtenir les coordonnées machine/travail
-    generate({ moves, machine, params, bit, material, name, origin }) {
+    // dry : { zOffset } -> essai à blanc : tout le parcours est relevé de zOffset mm et la broche n est pas démarrée
+    generate({ moves, machine, params, bit, material, name, origin, dry }) {
       const L = [];
       const sp = machine.spindle;
       const sVal = Math.round((params.rpm / sp.maxRpm) * sp.sMax);
+      const zo = dry ? dry.zOffset : 0;
+      const safeZ = params.safeZ + zo;
+      if (dry) L.push(`; *** ESSAI À BLANC : parcours relevé de ${N(zo)} mm, broche non démarrée ***`);
       L.push(`; EasyCNC - ${name || 'projet'}`);
       L.push(`; Machine : ${machine.brand} ${machine.name}`);
       L.push(`; Matériau : ${material.name} | Fraise : ${bit.name}`);
@@ -16,8 +20,8 @@
       L.push('; Origine X0 Y0 : ' + (origin.label || 'coin bas-gauche') + ' | Z0 : dessus du matériau');
       L.push('G21 ; mm', 'G90 ; absolu', 'G17', 'G94', 'G54');
       (machine.preamble || '').split('\n').map((s) => s.trim()).filter(Boolean).forEach((s) => L.push(s));
-      L.push(`G0 Z${N(params.safeZ)}`);
-      if (sp.mode === 'grbl') {
+      L.push(`G0 Z${N(safeZ)}`);
+      if (dry) { /* pas de broche pendant l'essai à blanc */ } else if (sp.mode === 'grbl') {
         L.push(`M3 S${sVal}`);
         if (sp.spinupSec) L.push(`G4 P${sp.spinupSec}`);
       } else if (sp.mode === 'manual') {
@@ -29,7 +33,7 @@
       for (let i = 1; i < moves.length; i++) {
         const m = moves[i];
         const g = m.r ? 'G0' : 'G1';
-        const x = m.x - origin.x, y = m.y - origin.y, z = m.z;
+        const x = m.x - origin.x, y = m.y - origin.y, z = m.z + zo;
         let s = '';
         if (last.x === null || N(x) !== N(last.x)) s += ` X${N(x)}`;
         if (last.y === null || N(y) !== N(last.y)) s += ` Y${N(y)}`;
@@ -43,7 +47,7 @@
         prev = m;
       }
 
-      const retract = `G0 Z${N(params.safeZ)}`;
+      const retract = `G0 Z${N(safeZ)}`;
       if (L[L.length - 1] !== retract) L.push(retract);
       if (sp.mode !== 'none') L.push('M5');
       L.push('G0 X0 Y0');
