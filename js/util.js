@@ -22,7 +22,9 @@
       } catch (e) { return d; }
     },
     set(k, v) {
-      try { localStorage.setItem('easycnc.' + k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ }
+      const txt = JSON.stringify(v);
+      try { localStorage.setItem('easycnc.' + k, txt); } catch (e) { /* stockage indisponible */ }
+      if (CNC.sync) CNC.sync.push('easycnc.' + k, txt);
     },
   };
 
@@ -66,5 +68,20 @@
     sec = Math.round(sec);
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
     return (h ? h + ' h ' : '') + (h || m ? m + ' min ' : '') + s + ' s';
+  };
+})();
+
+(function () {
+  const CNC = window.CNC;
+  // identifiant de projet (12 caractères a-z0-9)
+  CNC.newId = () => (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + '000000000000').replace(/[^a-z0-9]/g, '').slice(0, 12);
+  // notification discrète en bas de l'écran
+  CNC.toast = (text, kind) => {
+    const t = document.createElement('div');
+    t.className = 'toast' + (kind ? ' ' + kind : '');
+    t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add('show'), 10);
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
   };
 })();

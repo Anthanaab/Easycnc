@@ -60,8 +60,8 @@ les « Autorités de certification racines de confiance » de Windows du PC de l
 
 ## À savoir
 
-- Profils machines, fraises perso et projet en cours sont enregistrés **dans le navigateur**, par adresse : changer
-  d'IP ou de navigateur = repartir de zéro. Utiliser « Enregistrer » et « Exporter mes profils » pour les sauvegarder.
+- Profils machines, fraises perso, réglages et projets sont enregistrés **sur le serveur** (dossier `/var/lib/easycnc`, sauvegarde automatique quotidienne, 14 conservées) ; si le service est arrêté, l'appli retombe sur le navigateur et renvoie les modifications au retour du serveur.
+- Après la mise à jour d'une ancienne installation, les réglages déjà présents dans un navigateur sont envoyés au serveur au premier chargement ; ensuite tous les navigateurs partagent les mêmes profils, fraises et projets.- Le bouton « Enregistrer » range le projet dans la liste du serveur (bouton « Ouvrir » pour la parcourir) ; le projet en cours est aussi mémorisé automatiquement comme copie de travail.- Sauvegardes : `/var/lib/easycnc/backups` (une archive par jour). Restauration : arrêter le service, extraire l'archive dans `/var/lib/easycnc`, relancer.- État du service : `systemctl status easycnc-api` ; journal : `journalctl -u easycnc-api`.
 - Aucune authentification : à garder sur le réseau local.
 - Si l'IP du conteneur change, relancer `./install.sh <nouvelle IP>` (le certificat est lié à l'adresse).
 - Ubuntu 22.04 n'a pas Caddy dans ses dépôts : utiliser Debian 12 / Ubuntu 24.04, ou installer Caddy via son dépôt officiel.

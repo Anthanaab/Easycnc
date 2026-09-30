@@ -7,6 +7,7 @@
   const App = (CNC.app = {});
 
   const newProject = () => ({
+    id: CNC.newId(),
     name: 'Sans titre',
     stock: { w: 200, h: 120, t: 12, materialId: 'mdf' },
     shapes: [],
@@ -426,8 +427,33 @@
     $('#btnUndo').onclick = () => E.undo();
     $('#btnRedo').onclick = () => E.redo();
     $('#btnNew').onclick = () => { if (confirm('Créer un nouveau projet ? Les modifications non enregistrées seront perdues.')) App.setProject(newProject()); };
-    $('#btnSave').onclick = saveFile;
-    $('#btnOpen').onclick = () => $('#fileOpen').click();
+    // enregistrer / ouvrir : sur le serveur quand il est disponible, sinon fichiers
+    $('#btnSave').onclick = async () => {
+      if (!CNC.projects.available()) return saveFile();
+      try {
+        App.project.name = $('#projName').value || App.project.name;
+        await CNC.projects.save(App.project);
+        CNC.toast('Projet « ' + App.project.name + ' » enregistré sur le serveur');
+      } catch (e) { CNC.toast('Enregistrement impossible : ' + e.message, 'err'); }
+    };
+    $('#btnOpen').onclick = () => {
+      if (!CNC.projects.available()) return $('#fileOpen').click();
+      CNC.projects.browse({
+        currentId: App.project.id,
+        onOpen: (p) => { App.setProject(p); CNC.toast('Projet « ' + (p.name || 'Sans titre') + ' » ouvert'); },
+        onImport: () => $('#fileOpen').click(),
+        onExport: saveFile,
+      });
+    };
+    const syncEl = $('#syncState');
+    const showSync = (st) => {
+      const txt = { synced: 'Serveur', saving: 'Envoi…', error: 'Serveur injoignable', offline: 'Navigateur' }[st] || '';
+      syncEl.className = 'sync ' + st;
+      syncEl.textContent = txt;
+      syncEl.title = st === 'offline' ? 'Réglages enregistrés dans ce navigateur uniquement (pas de serveur)' : st === 'error' ? 'Le serveur ne répond pas : les modifications seront renvoyées automatiquement' : 'Réglages et projets enregistrés sur le serveur';
+    };
+    CNC.sync.onStatus = showSync;
+    showSync(CNC.sync.status);
     $('#fileOpen').onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ''; };
     $('#fileSvg').onchange = (e) => { if (e.target.files[0]) importSvgFile(e.target.files[0]); e.target.value = ''; };
     $('#fileRelief').onchange = async (e) => {
@@ -458,15 +484,14 @@
         const data = JSON.parse(await backupFile.files[0].text());
         if (data.app !== 'easycnc-backup' || typeof data.items !== 'object') throw new Error('fichier de sauvegarde non reconnu');
         if (!confirm('Remplacer vos profils, fraises et projet actuels par cette sauvegarde ?')) return;
-        for (const [k, v] of Object.entries(data.items)) if (k.startsWith('easycnc.')) localStorage.setItem(k, v);
-        location.reload();
+        for (const [k, v] of Object.entries(data.items)) if (k.startsWith('easycnc.')) { localStorage.setItem(k, v); CNC.sync.push(k, v); }        await CNC.sync.flushNow(); // le serveur doit recevoir la sauvegarde avant le rechargement (sinon il écraserait l'import)        location.reload();
       } catch (e) { alert('Restauration impossible : ' + e.message); }
       backupFile.value = '';
     };
     $('#btnBackup').onclick = () => CNC.modal({
       title: 'Sauvegarde des réglages',
       body: CNC.el('div', {},
-        CNC.el('p', {}, 'Vos profils machines, fraises perso, réglages du palpeur et le projet en cours sont stockés dans ce navigateur. Exportez-les pour les conserver ou les transférer sur un autre PC.'),
+        CNC.el('p', {}, CNC.projects.available() ? 'Vos réglages et projets sont enregistrés sur le serveur (avec une sauvegarde automatique par jour). Cet export sert de copie de sécurité supplémentaire.' : 'Vos profils machines, fraises perso, réglages du palpeur et le projet en cours sont stockés dans ce navigateur. Exportez-les pour les conserver ou les transférer sur un autre PC.'),
         CNC.el('div', { class: 'btns' },
           CNC.el('button', { class: 'btn primary', onclick: () => {
             const items = {};

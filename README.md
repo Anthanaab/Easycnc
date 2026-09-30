@@ -30,6 +30,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 | `js/grbl.js` | Web Serial, streaming avec comptage de caractères, jog, pause/arrêt |
 | `js/editor.js` | canvas : édition, historique, simulation |
 | `js/booleans.js`, `js/text.js`, `js/relief.js`, `js/view3d.js` | opérations sur les formes, texte, gravure 3D, vue 3D |
+| `js/sync.js`, `js/projects.js`, `server/easycnc_api.py` | synchronisation serveur, navigateur de projets, service de stockage |
 | `js/carve.js`, `js/app.js`, `js/managers.js` | interface |
 
 ## Fonctions
@@ -39,6 +40,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 - **Usinage** : contour extérieur / intérieur, sur le tracé (gravure), poche, **V-carve** (lettres et logos en V), **tenons de maintien**, **surfaçage** du dessus.
 - **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
 - **Laser (diode)** : contour, remplissage et gravure d’image en niveaux de gris, réglages par matériau, cadrage à faible puissance, vérification du mode laser GRBL (`$32`). Puissance et longueur d’onde du module à renseigner par l’utilisateur.
+- **Enregistrement** : réglages et projets sur le serveur (navigateur de projets : ouvrir, dupliquer, supprimer), sauvegarde quotidienne automatique ; repli sur le navigateur si le serveur est absent.
 - **Machine** : profils par marque, 33 fraises (droites, sphériques, V, hélices spéciales, surfaçage), matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé, **essai à blanc**, chargement d’un fichier G-code, sauvegarde/restauration des réglages.
 
 ## Limites actuelles
