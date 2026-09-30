@@ -117,7 +117,7 @@
 
     const cutSel = el('select', {}, [
       ['outside', 'Contour extérieur'], ['inside', 'Contour intérieur'], ['online', 'Sur le tracé (gravure)'],
-      ['pocket', 'Poche (évidement)'], ['none', 'Ne pas usiner'],
+      ['pocket', 'Poche (évidement)'], ['vcarve', 'V-carve (gravure en V)'], ['none', 'Ne pas usiner'],
     ].map(([v, t]) => el('option', { value: v }, t)));
     cutSel.addEventListener('change', () => forEachSel((sh) => { sh.cut = { ...sh.cut, type: cutSel.value }; }));
     // découpe traversante d'un contour : les tenons sont activés d'office (désactivables ensuite)
@@ -181,6 +181,8 @@
       alignRow, distRow,
       el('div', { class: 'muted', style: 'margin-top:8px' }, 'Combiner (au moins 2 formes ; « Soustraire » retire les suivantes de la première)'), comboRow);
 
+    const vcHint = el('div', { class: 'muted', style: 'margin:4px 0' },
+      'V-carve : nécessite une fraise de gravure en V (choix dans l\'onglet Fraiser). La profondeur est un maximum : les traits fins restent peu profonds, les traits larges vont jusqu\'à cette profondeur. Pour les zones très larges, évidez d\'abord à la fraise droite.');
     // tenons de maintien
     const tabDef = { on: false, count: 4, width: 5, height: 2 };
     const tabsOf = (sh) => ({ ...tabDef, ...((sh.cut && sh.cut.tabs) || {}) });
@@ -203,7 +205,7 @@
       fr.row, sidesRow, textBox, toolsBox,
       el('h3', { style: 'margin-top:14px' }, 'Usinage'),
       el('div', { class: 'row' }, el('label', {}, 'Type'), el('div', { class: 'grow' }, cutSel)),
-      fd.row, tabsBox,
+      fd.row, vcHint, tabsBox,
       el('div', { class: 'btns' },
         el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; autoTabs(sh); }) }, 'Traversant'),
         el('button', { class: 'btn sm', onclick: () => E.duplicate() }, 'Dupliquer'),
@@ -227,6 +229,7 @@
         textBox.style.display = isText ? '' : 'none';
         if (isText) { if (document.activeElement !== txtIn) txtIn.value = sel[0].text; fontSel.value = sel[0].font; }
         const tabOk = ['outside', 'inside', 'online'].includes(sel[0].cut.type);
+        vcHint.style.display = sel[0].cut.type === 'vcarve' ? '' : 'none';
         tabsBox.style.display = tabOk ? '' : 'none';
         distRow.style.display = sel.length >= 3 ? '' : 'none';
         comboRow.previousSibling.style.display = comboRow.style.display = sel.length >= 2 ? '' : 'none';

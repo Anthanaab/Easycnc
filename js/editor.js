@@ -305,6 +305,7 @@
     inside: { stroke: '#0d9488', fill: null },
     online: { stroke: '#7c3aed', fill: null },
     pocket: { stroke: '#92400e', fill: true },
+    vcarve: { stroke: '#be185d', fill: true },
     none: { stroke: '#8a8f98', fill: null },
   };
 

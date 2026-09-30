@@ -139,7 +139,44 @@
     return out;
   }
 
-  const PRIORITY = { pocket: 0, inside: 1, online: 2, outside: 3 };
+  // V-carve : passes décalées du bord vers l'intérieur, de plus en plus profondes.
+  // Au décalage d du bord, la fraise (pointe de rayon tipR, demi-angle a) atteint le bord en surface à la profondeur (d - tipR) / tan(a).
+  // Au-delà de la profondeur maximale, on continue à cette profondeur pour évider le centre (fond en crêtes : évidez plutôt à la fraise droite).
+  function vcarvePaths(clip, bit, maxDepth) {
+    const tipR = bit.diameter / 2, tan = Math.tan((((bit.angle || 60) / 2) * Math.PI) / 180);
+    const step = CNC.clamp(0.25 * tan, 0.05, 0.3);
+    const capD = tipR + maxDepth * tan;
+    const step2 = Math.max(step, capD * 0.6);
+    const rings = [];
+    for (let d = Math.max(step, tipR + step), n = 0; n < 2000; n++) {
+      const res = offset(clip, -d);
+      if (!res.length) break;
+      const z = -Math.min(maxDepth, (d - tipR) / tan);
+      res.forEach((ring) => rings.push({ ring: ring.slice().reverse(), z }));
+      d += d >= capD ? step2 : step;
+    }
+    if (!rings.length) return null;
+    const link = Math.max(step * 2.5, 0.3) + (step2 > step ? step2 : 0);
+    const out = [];
+    let cur = null, end = null, zPrev = 0;
+    for (const { ring, z } of rings) {
+      const rr = end ? rotateRing(ring, nearestIdx(ring, end)) : ring;
+      if (cur && CNC.dist(end, rr[0]) <= link) {
+        cur.pts.push([rr[0][0], rr[0][1], zPrev]);
+        lap(rr, zPrev, z, 1, cur.pts); // descente progressive sur le tour
+      } else {
+        if (cur) out.push(cur);
+        cur = { pts: [[rr[0][0], rr[0][1], 0]] };
+        lap(rr, 0, z, rampLaps(rr, z), cur.pts);
+        lap(rr, z, z, 1, cur.pts);
+      }
+      end = rr[0]; zPrev = z;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  const PRIORITY = { pocket: 0, vcarve: 0.5, inside: 1, online: 2, outside: 3 };
 
   // shapes -> { paths, warnings }
   TP.generate = ({ shapes, stock, bit, params, overcut, facing }) => {
@@ -169,7 +206,7 @@
       const closed = polys.filter((p) => p.closed && p.pts.length > 2);
       const open = polys.filter((p) => !p.closed && p.pts.length > 1);
       let type = s.cut.type;
-      if (bit.type === 'vbit' && type !== 'online') warnings.push(`« ${label} » : une fraise de gravure en V convient surtout au mode « Sur le tracé ».`);
+      if (bit.type === 'vbit' && type !== 'online' && type !== 'vcarve') warnings.push(`« ${label} » : une fraise de gravure en V convient surtout au mode « Sur le tracé ».`);
 
       if (open.length && type !== 'online') {
         warnings.push(`« ${label} » : tracé ouvert, usiné « Sur le tracé ».`);
@@ -200,6 +237,13 @@
         const rings = offset(clip, -r);
         if (!rings.length) warnings.push(`« ${label} » : trop petit pour la fraise (Ø ${bit.diameter} mm), ignoré.`);
         rings.forEach((ring) => paths.push(mk(ring.slice().reverse())));
+      } else if (type === 'vcarve') {
+        if (bit.type !== 'vbit') warnings.push(`« ${label} » : le V-carve demande une fraise de gravure en V (choisissez-en une dans l'onglet Fraiser).`);
+        else {
+          const res = vcarvePaths(clip, bit, D);
+          if (!res) warnings.push(`« ${label} » : forme trop fine pour le V-carve, ignorée.`);
+          else res.forEach((p) => paths.push(p));
+        }
       } else if (type === 'pocket') {
         const res = pocketPaths(clip, r, params.stepover, D, params.doc);
         if (!res) warnings.push(`« ${label} » : trop petit pour la fraise (Ø ${bit.diameter} mm), ignoré.`);

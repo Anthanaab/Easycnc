@@ -126,3 +126,6 @@ ul.checks { padding-left: 18px; margin: 8px 0; } ul.checks li { margin: 4px 0; }
 
 .zoombar button.on, .meas3d.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .meas3d { position: absolute; right: 12px; top: 12px; z-index: 4; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 16px; }
+
+@media (max-width: 1150px) { .tbtn.txt { padding: 6px 8px; font-size: 13px; } .proj-name { width: 110px; } .tabs button { padding: 8px 10px; } }
+.top { overflow: hidden; }

@@ -135,7 +135,7 @@
     const ref = bit.refDia || bit.diameter;
     const sp = machine.spindle;
     const rpm = CNC.clamp(material.rpm, sp.minRpm, sp.maxRpm);
-    let feed = rpm * bit.flutes * material.chip * ref;
+    let feed = rpm * bit.flutes * material.chip * ref * (bit.type === 'vbit' ? 2.5 : 1); // gravure : copeaux très fins, avance plus élevée possible
     feed = CNC.clamp(Math.round(feed / 10) * 10, 30, machine.maxFeed);
     const plunge = CNC.clamp(Math.round((feed * material.plunge) / 10) * 10, 20, machine.maxFeedZ);
     let doc = ref * material.doc;
