@@ -28,7 +28,7 @@
       id: 'lunyee-3018-pro-max', brand: 'Lunyee', name: '3018 Pro Max',
       area: { x: 300, y: 180, z: 80 }, baud: 115200, maxFeed: 2000, maxFeedZ: 600, rapid: 5000,
       spindle: { ...spindle3018, minRpm: 3000, maxRpm: 10000 }, homing: true, safeZ: 5,
-      notes: 'Fiche Lunyee : 300×180×80 mm, broche 500 W 10 000 tr/min, carte 32 bits GRBL F1.1, 6 fins de course (homing $H), 2000 mm/min max en coupe. Pince et $30 non précisés : vérifiez avec "Lire les réglages". Le laser 5,5 W n\'est pas géré.',
+      notes: 'Fiche Lunyee : 300×180×80 mm, broche 500 W 10 000 tr/min, carte 32 bits GRBL F1.1, 6 fins de course (homing $H), 2000 mm/min max en coupe. Pince et $30 non précisés : vérifiez avec "Lire les réglages". Un module laser (option) se déclare dans le mode Laser de l\'onglet Fraiser.',
     },
     {
       id: 'generic-3018', brand: 'Générique (Vevor, etc.)', name: 'CNC 3018 GRBL',
