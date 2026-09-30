@@ -54,9 +54,9 @@
       spindle: { ...spindle3018 }, homing: false, safeZ: 5,
       notes: 'Dupliquez ce profil et adaptez-le à votre machine.',
     },
-  ].map((m) => ({ builtin: true, collet: 'ER11', maxShank: 7, preamble: '', postamble: '', probe: { plate: 0, feed: 30, maxDepth: 25, retract: 5 }, ...m }));
+  ].map((m) => ({ builtin: true, collet: 'ER11', maxShank: 7, preamble: '', postamble: '', probe: { plate: 0, feed: 30, fast: 150, maxDepth: 25, retract: 5 }, ...m }));
   // Palpeur Z (plaque de touche) : épaisseur de plaque, avance de palpage, course max de recherche, remontée
-  const PROBE = { plate: 0, feed: 30, maxDepth: 25, retract: 5 };
+  const PROBE = { plate: 0, feed: 30, fast: 150, maxDepth: 25, retract: 5 };
   // Réglages palpeur : dans le profil (perso) ou, pour un profil intégré, dans une surcharge mémorisée par machine
   CNC.probeOf = (m) => ({ ...PROBE, ...(m.probe || {}), ...(m.builtin ? CNC.store.get('probe.' + m.id, {}) : {}) });
   CNC.setProbe = (m, key, val) => {
