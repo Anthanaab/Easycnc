@@ -338,7 +338,7 @@
     const dryBox = el('div', {},
       el('label', { style: 'display:flex;gap:8px;align-items:flex-start;margin:8px 0 2px' }, dryChk, 'Essai à blanc : parcours relevé, broche non démarrée (à faire avant la première vraie coupe)'),
       dryOff.row,
-      el('div', { class: 'btns' }, el('button', { class: 'btn sm', onclick: () => extIn.click() }, 'Charger un fichier G-code…'), extClear, extIn), extLabel);
+      el('div', { class: 'btns' }, el('button', { class: 'btn sm', onclick: () => frameMill() }, 'Cadrer le parcours (Z relevé)'), el('button', { class: 'btn sm', onclick: () => extIn.click() }, 'Charger un fichier G-code…'), extClear, extIn), extLabel);
 
     const c5 = card(5, 'Usinage',
       el('div', { class: 'row' }, connBtn, stateBadge),
@@ -498,6 +498,34 @@
       E.sim.laser = true;
       E.render();
       slider.value = 1000;
+      updateConn();
+    }
+
+    // cadrage à blanc du parcours : la fraise fait le tour de la zone usinée, relevée et broche arrêtée
+    async function frameMill() {
+      if (!grbl.connected || grbl.job) return alert('Connectez la machine (et attendez la fin du travail en cours).');
+      if (!job || job.laser || !job.moves) return alert('Aucun parcours à cadrer : ajoutez des formes à usiner.');
+      const org = originOf(), params = App.params(), N = CNC.num;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const m of job.moves) {
+        if (m.r) continue;
+        x0 = Math.min(x0, m.x); x1 = Math.max(x1, m.x); y0 = Math.min(y0, m.y); y1 = Math.max(y1, m.y);
+      }
+      if (!Number.isFinite(x0)) return alert('Aucun parcours à cadrer.');
+      const ax = x0 - org.x, bx = x1 - org.x, ay = y0 - org.y, by = y1 - org.y;
+      const ok = await CNC.confirmModal('Cadrer le parcours ?', el('div', {},
+        el('div', {}, 'La fraise va faire le tour de la zone usinée, relevée, sans tourner.'),
+        el('ul', { class: 'checks' },
+          el('li', {}, `Zone en X : de ${CNC.round(ax, 1)} à ${CNC.round(bx, 1)} mm (depuis l'origine)`),
+          el('li', {}, `Zone en Y : de ${CNC.round(ay, 1)} à ${CNC.round(by, 1)} mm (depuis l'origine)`),
+          el('li', {}, `Hauteur : ${params.safeZ} mm au-dessus du Z0`),
+          el('li', {}, `Origine du programme : ${org.label}`)),
+        el('div', { class: 'muted' }, 'Si le cadre sort du matériau, corrigez la taille du matériau ou la position des formes (onglet Dessiner) avant de couper.')), 'Cadrer');
+      if (!ok) return;
+      const lines = ['; Cadrage du parcours (Z relevé, broche arrêtée)', 'G21', 'G90', 'G17', 'G94', 'G54', `G0 Z${N(params.safeZ)}`,
+        `G0 X${N(ax)} Y${N(ay)}`, `G0 X${N(bx)}`, `G0 Y${N(by)}`, `G0 X${N(ax)}`, `G0 Y${N(ay)}`, 'G0 X0 Y0'];
+      log('i', `Cadrage : X ${CNC.round(ax, 1)}..${CNC.round(bx, 1)}, Y ${CNC.round(ay, 1)}..${CNC.round(by, 1)}`);
+      grbl.startJob(lines);
       updateConn();
     }
 
