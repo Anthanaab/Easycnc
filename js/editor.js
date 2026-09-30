@@ -567,14 +567,14 @@
       let a = moves[i - 1], b = m;
       if (i === end && fracEnd < 1) { const q = point(i, fracEnd); b = { x: q[0], y: q[1], z: q[2] }; }
       const z = Math.min(-a.z, -b.z);
-      const k = CNC.clamp(Math.floor((Math.max(z, 0) / maxDepth) * (B - 0.001)), 0, B - 1);
+      const k = E.sim.laser ? CNC.clamp(Math.floor(m.s * 7.99), 0, B - 1) : CNC.clamp(Math.floor((Math.max(z, 0) / maxDepth) * (B - 0.001)), 0, B - 1);
       const [x0, y0] = w2s(a.x, a.y), [x1, y1] = w2s(b.x, b.y);
       paths[k].moveTo(x0, y0); paths[k].lineTo(x1, y1);
     }
     ctx.lineCap = 'round';
     ctx.lineWidth = Math.max(1.5, bit.diameter * view.s);
     for (let k = 0; k < B; k++) {
-      ctx.strokeStyle = `hsl(28, 55%, ${58 - k * 4.5}%)`;
+      ctx.strokeStyle = E.sim.laser ? `rgba(70, 35, 10, ${0.22 + k * 0.1})` : `hsl(28, 55%, ${58 - k * 4.5}%)`;
       ctx.stroke(paths[k]);
     }
     ctx.lineCap = 'butt';

@@ -16,6 +16,8 @@
     sMax: null, // S maxi détecté ($30)
     origin: 'bl',
     overcut: 0.2, // sur-profondeur pour les découpes traversantes
+    mode: 'mill', // outil : 'mill' (fraise) ou 'laser'
+    laser: null, // réglages laser (créés à la demande)
     facing: { on: false, depth: 0.5 }, // surfaçage du dessus
   });
 
@@ -215,15 +217,27 @@
       el('button', { class: 'btn sm', onclick: () => setTab('on')(true) }, 'Activer les tenons'));
     const tabsBox = el('div', {}, tabHint, el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0 2px' }, tabChk, 'Tenons de maintien'), tabDetails);
 
+    // mode laser : opération par forme
+    const modeSel = el('select', {}, el('option', { value: 'mill' }, 'Fraise (défonceuse)'), el('option', { value: 'laser' }, 'Laser'));
+    modeSel.addEventListener('change', () => App.setMode(modeSel.value));
+    const opSel = el('select', {}, [['', 'Automatique (selon le type)'], ['off', 'Ne pas graver'], ['line', 'Contour (ligne)'], ['fill', 'Remplissage'], ['image', 'Image (niveaux de gris)']]
+      .map(([v, t]) => el('option', { value: v }, t)));
+    opSel.addEventListener('change', () => forEachSel((sh) => { if (opSel.value) sh.lop = opSel.value; else delete sh.lop; }));
+    const lInv = el('input', { type: 'checkbox' });
+    lInv.addEventListener('change', () => setRel('invert')(lInv.checked));
+    const lInvRow = el('label', { style: 'display:flex;gap:8px;align-items:center;margin:6px 0' }, lInv, 'Inverser l\'image (blanc = brûlé)');
+    const laserBox = el('div', {}, el('h3', { style: 'margin-top:14px' }, 'Laser'),
+      el('div', { class: 'row' }, el('label', {}, 'Opération'), el('div', { class: 'grow' }, opSel)), lInvRow,
+      el('div', { class: 'muted' }, 'Contour : suit le tracé (découpe / marquage). Remplissage : hachures à l\'intérieur. Image : gravure en niveaux de gris. Réglages de puissance et de vitesse dans l\'onglet Fraiser.'));
+    machSel.closest('.row').after(el('div', { class: 'row' }, el('label', {}, 'Outil'), el('div', { class: 'grow' }, modeSel)));
+    const millBox = el('div', {}, el('h3', { style: 'margin-top:14px' }, 'Usinage'), cutRow, reliefBox, fd.row, vcHint, tabsBox,
+      el('div', { class: 'btns' }, el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; autoTabs(sh); }) }, 'Traversant')));
+
     const cardShape = el('div', { class: 'card' },
       el('h3', {}, 'Forme'),
       el('div', { class: 'grid2' }, fX.row, fY.row, fw.row, fh.row),
       fr.row, sidesRow, textBox, toolsBox,
-      el('h3', { style: 'margin-top:14px' }, 'Usinage'),
-      cutRow, reliefBox,
-      fd.row, vcHint, tabsBox,
-      el('div', { class: 'btns' },
-        el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; autoTabs(sh); }) }, 'Traversant'),
+      millBox, laserBox,      el('div', { class: 'btns' },
         el('button', { class: 'btn sm', onclick: () => E.duplicate() }, 'Dupliquer'),
         el('button', { class: 'btn sm', onclick: () => E.reorder(1) }, 'Avancer'),
         el('button', { class: 'btn sm', onclick: () => E.reorder(-1) }, 'Reculer'),
@@ -239,6 +253,11 @@
       const sel = E.selected();
       cardShape.style.display = sel.length ? '' : 'none';
       cardHelp.style.display = sel.length ? 'none' : '';
+      const laserMode = P().mode === 'laser';
+      modeSel.value = laserMode ? 'laser' : 'mill';
+      millBox.style.display = laserMode ? 'none' : '';
+      laserBox.style.display = laserMode ? '' : 'none';
+      if (laserMode && sel.length) { opSel.value = sel[0].lop || ''; lInv.checked = !!(sel[0].relief && sel[0].relief.invert); lInvRow.style.display = sel.every((q) => q.kind === 'relief') ? '' : 'none'; }
       if (sel.length) {
         cutSel.value = sel[0].cut.type;
         const isRelief = sel.length === 1 && sel[0].kind === 'relief';
@@ -339,6 +358,18 @@
   };
   App.setView = (mode) => { App.viewMode = mode; CNC.store.set('viewMode', mode); applyView(mode); };
 
+  // outil : fraise ou laser
+  App.refreshView = () => applyView(App.tab === 'carve' && App.project.mode !== 'laser' ? App.viewMode : '2d');
+  App.setMode = (mode) => {
+    App.project.mode = mode;
+    if (mode === 'laser' && !App.project.laser) App.project.laser = CNC.laser.defaults();
+    E.sim = null;
+    E.changed(); E.on.select();
+    if (App.tab === 'carve') carve.enter();
+    App.refreshView();
+    $('#viewMode').hidden = App.tab !== 'carve' || mode === 'laser';
+  };
+
   App.tab = 'design';
   App.setTab = (tab) => {
     App.tab = tab;
@@ -351,7 +382,8 @@
     if (tab === 'design') { panel.append(design.node); design.refresh(); E.sim = null; }
     else { panel.append(carve.node); carve.enter(); }
     $('#viewMode').hidden = tab !== 'carve';
-    applyView(tab === 'carve' ? App.viewMode : '2d');
+    App.refreshView();
+    $('#viewMode').hidden = tab !== 'carve' || App.project.mode === 'laser';
     E.render();
   };
 

@@ -38,6 +38,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 - **Édition** : déplacer / redimensionner / pivoter, multi-sélection, alignement et répartition, fusion / soustraction / intersection.
 - **Usinage** : contour extérieur / intérieur, sur le tracé (gravure), poche, **V-carve** (lettres et logos en V), **tenons de maintien**, **surfaçage** du dessus.
 - **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
+- **Laser (diode)** : contour, remplissage et gravure d’image en niveaux de gris, réglages par matériau, cadrage à faible puissance, vérification du mode laser GRBL (`$32`). Puissance et longueur d’onde du module à renseigner par l’utilisateur.
 - **Machine** : profils par marque, 33 fraises (droites, sphériques, V, hélices spéciales, surfaçage), matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé, **essai à blanc**, chargement d’un fichier G-code, sauvegarde/restauration des réglages.
 
 ## Limites actuelles
@@ -47,6 +48,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 - La vue 3D a une résolution d'environ 0,5 mm : elle sert à contrôler le résultat, elle n'influence pas le G-code.
 - Le texte est sur une seule ligne de base (plusieurs lignes possibles), avec une police par bloc ; il ne suit pas une courbe.
 - Les profils machines fournis sont indicatifs, et les paramètres de coupe calculés sont des valeurs de départ prudentes, à ajuster selon votre machine.
+- Laser : pas de réglage de mise au point ni de compensation de largeur de trait ; les valeurs par matériau sont des points de départ à valider sur chute. Lunettes adaptées et surveillance obligatoires.
 - Avant la première vraie coupe, lancez toujours un **essai à blanc** (option de l'onglet Fraiser : le parcours est relevé et la broche reste éteinte).
 
 ## Licences des composants embarqués (`js/vendor/`)

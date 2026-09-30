@@ -122,6 +122,53 @@
       };
       requestAnimationFrame(tick);
     });
+    // ---------- Laser (mode alternatif à la fraise) ----------
+    const L = CNC.laser;
+    const LS = () => (P().laser = P().laser || L.defaults());
+    const lcfg = () => L.cfg(P().machineId);
+    const getPath = (o, p) => p.split('.').reduce((a, k) => a && a[k], o);
+    const lfields = [];
+    const lf = (label, path, unit, min, step) => {
+      const f = App.field(label, {
+        get: () => getPath(LS(), path), unit, min, step,
+        set: (v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], LS())[last] = v; LS().preset = 'custom'; recompute(); },
+      });
+      lfields.push(f); return f.row;
+    };
+    const enChk = el('input', { type: 'checkbox' });
+    enChk.addEventListener('change', () => { L.setCfg(P().machineId, { enabled: enChk.checked }); refreshAll(); recompute(); });
+    const powF = App.field('Puissance', { get: () => lcfg().power || null, unit: 'W', min: 0.1, set: (v) => { L.setCfg(P().machineId, { power: v }); recompute(); } });
+    const waveF = App.field('Longueur d\'onde', { get: () => lcfg().wave || null, unit: 'nm', min: 100, set: (v) => { L.setCfg(P().machineId, { wave: v }); recompute(); } });
+    lfields.push(powF, waveF);
+    const cmdSel = select((v) => { L.setCfg(P().machineId, { cmd: v }); recompute(); });
+    cmdSel.append(el('option', { value: 'M4' }, 'M4 (puissance dynamique, recommandé)'), el('option', { value: 'M3' }, 'M3 (puissance constante)'));
+    const presetSel = select((v) => {
+      if (v === 'custom') return;
+      const p = L.presets[v];
+      const s = LS();
+      s.preset = v; s.line = { ...p.line }; s.fill = { ...p.fill }; s.image = { ...p.image };
+      refreshAll(); recompute();
+    });
+    presetSel.append(el('option', { value: 'custom' }, 'Personnalisé'), ...Object.entries(L.presets).map(([k, p]) => el('option', { value: k }, p.name)));
+    const imgMode = select((v) => { LS().image.mode = v; LS().preset = 'custom'; recompute(); });
+    imgMode.append(el('option', { value: 'gray' }, 'Niveaux de gris (puissance variable)'), el('option', { value: 'thresh' }, 'Noir et blanc (seuil)'));
+    const originSelL = select((v) => { P().origin = v; recompute(); });
+    originSelL.append(el('option', { value: 'bl' }, 'Coin bas-gauche du matériau'), el('option', { value: 'center' }, 'Centre du matériau'));
+    const frameBtn = el('button', { class: 'btn sm', onclick: () => frameLaser() }, 'Cadrer (très faible puissance)');
+    const laserWarn = el('div');
+    const cL = card(3, 'Laser',
+      el('label', { style: 'display:flex;gap:8px;align-items:center;margin:4px 0' }, enChk, 'Un module laser est monté sur cette machine'),
+      powF.row, waveF.row, row('Commande', cmdSel),
+      el('div', { class: 'muted' }, 'Puissance optique et longueur d\'onde figurent sur l\'étiquette du module (elles servent au G-code et aux consignes de sécurité). Mode laser GRBL requis : $32 = 1.'),
+      laserWarn,
+      el('h3', { style: 'margin-top:14px' }, 'Matériau'), row('Réglages', presetSel),
+      el('div', { class: 'muted' }, 'Valeurs de départ prudentes : testez sur une chute et ajustez puissance et vitesse.'),
+      el('h3', { style: 'margin-top:14px' }, 'Contour (ligne)'), lf('Puissance', 'line.power', '%', 1, 1), lf('Vitesse', 'line.speed', 'mm/min', 10), lf('Passes', 'line.passes', '', 1, 1),
+      el('h3', { style: 'margin-top:14px' }, 'Remplissage'), lf('Puissance', 'fill.power', '%', 1, 1), lf('Vitesse', 'fill.speed', 'mm/min', 10), lf('Interligne', 'fill.interval', 'mm', 0.03), lf('Angle', 'fill.angle', '°', 0, 1),
+      el('h3', { style: 'margin-top:14px' }, 'Image'), row('Mode', imgMode), lf('Puissance mini', 'image.min', '%', 0, 1), lf('Puissance maxi', 'image.max', '%', 1, 1), lf('Vitesse', 'image.speed', 'mm/min', 10), lf('Interligne', 'image.interval', 'mm', 0.03),
+      el('h3', { style: 'margin-top:14px' }, 'Origine et cadrage'), row('Origine X0 Y0', originSelL), lf('Puissance', 'frame.power', '%', 0, 0.5), lf('Vitesse', 'frame.speed', 'mm/min', 100),
+      el('div', { class: 'btns' }, frameBtn));
+
     const c4 = card(4, 'Aperçu et G-code', warnBox, stats,
       el('div', { class: 'row' }, slider),
       el('div', { class: 'btns' }, playBtn, el('label', { class: 'muted' }, rapidChk, ' déplacements rapides')),
@@ -329,6 +376,24 @@
     stopBtn.addEventListener('click', () => { grbl.stop(); log('i', 'Arrêt demandé (reset). Utilisez « Déverrouiller $X » puis relevez Z.'); });
     startBtn.addEventListener('click', async () => {
       if (!job && !extJob) return;
+      if (job && job.laser && !extJob) { // lancement d'une gravure laser
+        const cfg = L.cfg(P().machineId);
+        if (!cfg.enabled) return alert('Déclarez d\'abord le module laser (carte Laser : « Un module laser est monté »).');
+        if (!cfg.power) return alert('Renseignez la puissance de votre laser (carte Laser) : elle sert aux consignes de sécurité.');
+        const okL = await CNC.confirmModal('Lancer la gravure laser ?', el('div', {},
+          el('div', { class: 'warn' }, 'Le faisceau laser peut causer des lésions oculaires permanentes et déclencher un incendie.'),
+          el('ul', { class: 'checks' },
+            el('li', {}, cfg.wave ? `Lunettes de protection homologuées pour ${cfg.wave} nm portées par toutes les personnes présentes` : 'Lunettes de protection homologuées pour la longueur d\'onde de votre laser portées par toutes les personnes présentes'),
+            el('li', {}, 'Module laser à la bonne hauteur (mise au point) et bien fixé'),
+            el('li', {}, `Matériau adapté au laser (${App.material().name.includes('PVC') ? 'PAS de PVC : gaz toxiques' : 'ni PVC, ni plastique inconnu'}) et immobilisé`),
+            el('li', {}, 'Pièce bien aérée ou aspiration ; extincteur ou eau à portée de main'),
+            el('li', {}, 'Ne jamais laisser la machine sans surveillance ; arrêt d\'urgence accessible'),
+            el('li', {}, 'Zéro X/Y défini sur ' + (P().origin === 'center' ? 'le centre' : 'le coin bas-gauche') + ' du matériau'))), 'Lancer');
+        if (!okL) return;
+        grbl.startJob(CNC.gcode.clean(job.lines));
+        updateConn();
+        return;
+      }
       const dry = !extJob && dryChk.checked;
       const items = dry
         ? [`Le parcours sera relevé de ${dryZ} mm et la broche ne sera PAS démarrée : la fraise passe au-dessus du matériau`,
@@ -360,6 +425,16 @@
     };
     grbl.on.settings = (st) => {
       settingsNote.innerHTML = '';
+      const s32 = st.$32;
+      if (s32 !== undefined) {
+        if (P().mode === 'laser' && s32 !== 1) {
+          settingsNote.append(el('div', { class: 'warn' }, 'Le mode laser de GRBL n\'est pas activé ($32 = 0) : la puissance ne suivrait pas la vitesse. ',
+            el('button', { class: 'btn sm', onclick: () => { grbl.send('$32=1').then(() => { log('i', '$32=1 enregistré.'); settingsNote.innerHTML = ''; }).catch((e) => log('e', e.message)); } }, 'Activer ($32=1)')));
+        } else if (P().mode !== 'laser' && s32 === 1) {
+          settingsNote.append(el('div', { class: 'warn' }, 'Le mode laser de GRBL est activé ($32 = 1) : à désactiver pour fraiser. ',
+            el('button', { class: 'btn sm', onclick: () => { grbl.send('$32=0').then(() => { log('i', '$32=0 enregistré.'); settingsNote.innerHTML = ''; }).catch((e) => log('e', e.message)); } }, 'Désactiver ($32=0)')));
+        }
+      }
       const s30 = st.$30, mine = App.machine().spindle.sMax;
       if (s30 && s30 !== mine) {
         settingsNote.append(el('div', { class: 'warn' }, `GRBL indique $30 = ${s30}, le profil suppose S max = ${mine}. `,
@@ -367,8 +442,65 @@
       }
     };
 
+    const originOf = () => {
+      const st = P().stock;
+      return P().origin === 'center' ? { x: st.w / 2, y: st.h / 2, label: 'centre du matériau' } : { x: 0, y: 0, label: 'coin bas-gauche du matériau' };
+    };
+
+    // ---------- calcul en mode laser ----------
+    function recomputeLaser() {
+      clearTimeout(timer);
+      stopPlay();
+      const machine = App.machine(), cfg = L.cfg(P().machineId), settings = LS(), st = P().stock;
+      warnBox.innerHTML = ''; stats.innerHTML = '';
+      const warns = [];
+      if (!cfg.enabled) warns.push('Le module laser n\'est pas déclaré pour cette machine : cochez « Un module laser est monté » dans la carte Laser.');
+      if (!cfg.power) warns.push('Renseignez la puissance de votre laser (en W) dans la carte Laser.');
+      const plan = L.plan({ shapes: P().shapes, settings, machine });
+      warns.push(...plan.warnings);
+      if (plan.moves.length < 2) {
+        job = null; E.sim = null; E.render();
+        warns.push('Rien à graver : choisissez une opération laser pour vos formes (onglet Dessiner).');
+        warns.forEach((w) => warnBox.append(el('div', { class: 'warn' }, w)));
+        updateConn();
+        return;
+      }
+      let out = false;
+      for (const m of plan.moves) if (!m.r && (m.x < -0.01 || m.y < -0.01 || m.x > st.w + 0.01 || m.y > st.h + 0.01)) out = true;
+      if (out) warns.push('Une partie de la gravure sort du matériau.');
+      if (st.w > machine.area.x || st.h > machine.area.y) warns.push(`Le matériau dépasse la zone de travail (${machine.area.x} × ${machine.area.y} mm).`);
+      const lines = L.gcode({ moves: plan.moves, machine, cfg, origin: originOf(), name: P().name, settings });
+      job = { lines, moves: plan.moves, stats: plan.stats, laser: true };
+      warns.forEach((w) => warnBox.append(el('div', { class: 'warn' }, w)));
+      const stat = (a, b) => el('div', { class: 'stat' }, el('span', {}, a), el('b', {}, b));
+      stats.append(stat('Durée estimée', CNC.fmtTime(plan.stats.sec)), stat('Longueur gravée', CNC.round(plan.stats.burnLen / 1000, 2) + ' m'), stat('Lignes de G-code', lines.length));
+      E.setSim(plan.moves, { diameter: 0.2 });
+      E.sim.laser = true;
+      E.render();
+      slider.value = 1000;
+      updateConn();
+    }
+
+    function frameLaser() {
+      if (!grbl.connected || grbl.job) return alert('Connectez la machine (et attendez la fin du travail en cours).');
+      const cfg = L.cfg(P().machineId), plan = L.framePlan({ shapes: P().shapes, settings: LS() });
+      if (!plan) return alert('Aucune forme à cadrer.');
+      const go = CNC.confirmModal('Cadrer la zone ?', el('div', {},
+        el('div', {}, 'Le laser va parcourir le rectangle englobant à très faible puissance.'),
+        el('ul', { class: 'checks' },
+          el('li', {}, cfg.wave ? `Lunettes de protection adaptées à ${cfg.wave} nm` : 'Lunettes de protection adaptées à la longueur d\'onde du module'),
+          el('li', {}, 'Zéro X/Y défini sur l\'origine choisie'), el('li', {}, 'Rien d\'inflammable sous le faisceau'))), 'Cadrer');
+      go.then((ok) => {
+        if (!ok) return;
+        const lines = L.gcode({ moves: plan.moves, machine: App.machine(), cfg, origin: originOf(), name: P().name, note: 'cadrage' });
+        grbl.startJob(CNC.gcode.clean(lines));
+        updateConn();
+      });
+    }
+
     // ---------- calcul ----------
     function recompute() {
+      if (P().mode === 'laser') return recomputeLaser();
       clearTimeout(timer);
       stopPlay();
       const machine = App.machine(), bit = App.bit(), material = App.material(), params = App.params(), st = P().stock;
@@ -419,6 +551,16 @@
     }
     function refreshAll() {
       fillMachines(); fillBits();
+      const laserMode = P().mode === 'laser';
+      c2.style.display = c3.style.display = laserMode ? 'none' : '';
+      cL.style.display = laserMode ? '' : 'none';
+      probeBtn.style.display = dryBox.style.display = laserMode ? 'none' : '';
+      if (laserMode) {
+        const cfg = L.cfg(P().machineId);
+        enChk.checked = !!cfg.enabled; cmdSel.value = cfg.cmd; presetSel.value = LS().preset in L.presets ? LS().preset : 'custom';
+        imgMode.value = LS().image.mode; originSelL.value = P().origin;
+        lfields.forEach((f) => f.refresh());
+      }
       matSel.value = P().stock.materialId;
       originSel.value = P().origin; facChk.checked = !!P().facing.on; facDepth.row.style.display = P().facing.on ? '' : 'none';
       const m = App.machine(), b = App.bit();
@@ -435,7 +577,7 @@
     App.onProjectLoaded = () => { job = null; if (App.tab === 'carve') { refreshAll(); recompute(); } };
 
     return {
-      node: el('div', {}, c1, c2, c3, c4, c5),
+      node: el('div', {}, c1, c2, c3, cL, c4, c5),
       enter() { refreshAll(); recompute(); },
       invalidate() { job = null; clearTimeout(timer); timer = setTimeout(recompute, 250); },
     };
