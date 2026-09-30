@@ -42,8 +42,11 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 
 ## Limites actuelles
 
-Pas de V-carve ni de gravure 3D, simulation à résolution limitée (≈ 0,5 mm). Texte sur une seule police par forme, sans courbe.
-Testez toujours un premier programme **sans fraise / en l'air** avant de couper.
+- Pas de V-carve (creusage de lettres à profondeur variable) ni de gravure 3D : les fraises en V servent à graver le long d'un tracé.
+- La vue 3D a une résolution d'environ 0,5 mm : elle sert à contrôler le résultat, elle n'influence pas le G-code.
+- Le texte est sur une seule ligne de base (plusieurs lignes possibles), avec une police par bloc ; il ne suit pas une courbe.
+- Les profils machines fournis sont indicatifs, et les paramètres de coupe calculés sont des valeurs de départ prudentes, à ajuster selon votre machine.
+- Avant la première vraie coupe, lancez toujours un **essai à blanc** (option de l'onglet Fraiser : le parcours est relevé et la broche reste éteinte).
 
 ## Licences des composants embarqués (`js/vendor/`)
 
