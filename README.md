@@ -29,12 +29,12 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 | `js/gcode.js` | post-processeur GRBL |
 | `js/grbl.js` | Web Serial, streaming avec comptage de caractères, jog, pause/arrêt |
 | `js/editor.js` | canvas : édition, historique, simulation |
-| `js/booleans.js`, `js/text.js`, `js/view3d.js` | opérations sur les formes, texte, vue 3D |
+| `js/booleans.js`, `js/text.js`, `js/relief.js`, `js/view3d.js` | opérations sur les formes, texte, gravure 3D, vue 3D |
 | `js/carve.js`, `js/app.js`, `js/managers.js` | interface |
 
 ## Fonctions
 
-- **Formes** : rectangle, cercle, polygone, étoile, texte (5 polices embarquées), import SVG.
+- **Formes** : rectangle, cercle, polygone, étoile, texte (5 polices embarquées), import SVG, **relief 3D** depuis une image en niveaux de gris.
 - **Édition** : déplacer / redimensionner / pivoter, multi-sélection, alignement et répartition, fusion / soustraction / intersection.
 - **Usinage** : contour extérieur / intérieur, sur le tracé (gravure), poche, **V-carve** (lettres et logos en V), **tenons de maintien**, **surfaçage** du dessus.
 - **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
@@ -42,7 +42,8 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 
 ## Limites actuelles
 
-- Pas de gravure 3D (relief). Le V-carve évide mal les zones très larges (fond en crêtes) : évidez-les d abord à la fraise droite.
+- Le V-carve évide mal les zones très larges (fond en crêtes) : évidez-les d abord à la fraise droite.
+- Relief 3D : usinage long (compter environ 1 h pour 100 × 100 mm avec une fraise de 3 mm), les bords très abrupts sont adoucis par le rayon de la fraise, et la précision est limitée par l image importée (300 px max).
 - La vue 3D a une résolution d'environ 0,5 mm : elle sert à contrôler le résultat, elle n'influence pas le G-code.
 - Le texte est sur une seule ligne de base (plusieurs lignes possibles), avec une police par bloc ; il ne suit pas une courbe.
 - Les profils machines fournis sont indicatifs, et les paramètres de coupe calculés sont des valeurs de départ prudentes, à ajuster selon votre machine.

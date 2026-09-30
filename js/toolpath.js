@@ -176,7 +176,7 @@
     return out;
   }
 
-  const PRIORITY = { pocket: 0, vcarve: 0.5, inside: 1, online: 2, outside: 3 };
+  const PRIORITY = { pocket: 0, relief: 0.2, vcarve: 0.5, inside: 1, online: 2, outside: 3 };
 
   // shapes -> { paths, warnings }
   TP.generate = ({ shapes, stock, bit, params, overcut, facing }) => {
@@ -202,6 +202,10 @@
       let D = Math.min(s.cut.depth, stock.t);
       if (s.cut.depth >= stock.t - 1e-6) D = stock.t + overcut;
       if (bit.cutLength && D > bit.cutLength) warnings.push(`« ${label} » : profondeur ${CNC.round(D, 1)} mm > longueur de coupe de la fraise (${bit.cutLength} mm).`);
+      if (s.kind === 'relief') { // gravure 3D : ébauche + finition calculées par CNC.relief
+        paths.push(...CNC.relief.paths(s, { stock, bit, params, warnings, label }));
+        continue;
+      }
       const polys = G.worldPolys(s);
       const closed = polys.filter((p) => p.closed && p.pts.length > 2);
       const open = polys.filter((p) => !p.closed && p.pts.length > 1);

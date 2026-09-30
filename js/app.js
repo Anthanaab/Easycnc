@@ -183,6 +183,22 @@
 
     const vcHint = el('div', { class: 'muted', style: 'margin:4px 0' },
       'V-carve : nécessite une fraise de gravure en V (choix dans l\'onglet Fraiser). La profondeur est un maximum : les traits fins restent peu profonds, les traits larges vont jusqu\'à cette profondeur. Pour les zones très larges, évidez d\'abord à la fraise droite.');
+    // relief 3D
+    const relOf = (sh) => ({ invert: false, rough: true, allow: 0.3, fstep: 0, ...(sh.relief || {}) });
+    const setRel = (k) => (v) => forEachSel((sh) => { sh.relief = { ...relOf(sh), [k]: v }; });
+    const relInv = el('input', { type: 'checkbox' }), relRough = el('input', { type: 'checkbox' });
+    relInv.addEventListener('change', () => setRel('invert')(relInv.checked));
+    relRough.addEventListener('change', () => setRel('rough')(relRough.checked));
+    const relGet = (k) => () => (one() && one().kind === 'relief' ? relOf(one())[k] : null);
+    const fAllow = reg(field('Réserve', { get: relGet('allow'), set: setRel('allow'), min: 0, unit: 'mm' }));
+    const fFstep = reg(field('Pas finition', { get: relGet('fstep'), set: setRel('fstep'), min: 0, unit: 'mm' }));
+    const reliefBox = el('div', {}, el('h3', { style: 'margin-top:14px' }, 'Relief 3D'),
+      el('label', { style: 'display:flex;gap:8px;align-items:center;margin:6px 0' }, relInv, 'Inverser (blanc = creux, noir = surface)'),
+      el('label', { style: 'display:flex;gap:8px;align-items:center;margin:6px 0' }, relRough, 'Ébauche par couches avant la finition'),
+      fAllow.row, fFstep.row,
+      el('div', { class: 'muted' }, 'Blanc = dessus du matériau, noir = profondeur maximale (champ « Profondeur »). Pas de finition à 0 = automatique. Fraise sphérique conseillée ; usinage long : vérifiez la durée dans l\'onglet Fraiser.'));
+    const cutRow = el('div', { class: 'row' }, el('label', {}, 'Type'), el('div', { class: 'grow' }, cutSel));
+
     // tenons de maintien
     const tabDef = { on: false, count: 4, width: 5, height: 2 };
     const tabsOf = (sh) => ({ ...tabDef, ...((sh.cut && sh.cut.tabs) || {}) });
@@ -204,7 +220,7 @@
       el('div', { class: 'grid2' }, fX.row, fY.row, fw.row, fh.row),
       fr.row, sidesRow, textBox, toolsBox,
       el('h3', { style: 'margin-top:14px' }, 'Usinage'),
-      el('div', { class: 'row' }, el('label', {}, 'Type'), el('div', { class: 'grow' }, cutSel)),
+      cutRow, reliefBox,
       fd.row, vcHint, tabsBox,
       el('div', { class: 'btns' },
         el('button', { class: 'btn sm', onclick: () => forEachSel((sh) => { sh.cut = { ...sh.cut, depth: st().t }; autoTabs(sh); }) }, 'Traversant'),
@@ -225,6 +241,10 @@
       cardHelp.style.display = sel.length ? 'none' : '';
       if (sel.length) {
         cutSel.value = sel[0].cut.type;
+        const isRelief = sel.length === 1 && sel[0].kind === 'relief';
+        reliefBox.style.display = isRelief ? '' : 'none';
+        cutRow.style.display = isRelief ? 'none' : '';
+        if (isRelief) { relInv.checked = relOf(sel[0]).invert; relRough.checked = relOf(sel[0]).rough !== false; }
         const isText = sel.length === 1 && sel[0].kind === 'text';
         textBox.style.display = isText ? '' : 'none';
         if (isText) { if (document.activeElement !== txtIn) txtIn.value = sel[0].text; fontSel.value = sel[0].font; }
@@ -250,6 +270,7 @@
     polygon: '<path d="M16 5l9.5 6.9-3.6 11.2H10.1L6.5 11.9z"/>',
     star: '<path d="M16 4l3.5 8 8.5.8-6.4 5.7 1.9 8.5L16 22.6 8.5 27l1.9-8.5L4 12.8l8.5-.8z"/>',
     text: '<path d="M7 8h18M16 8v17M12 25h8"/>',
+    relief: '<path d="M4 24l6-9 5 6 4-8 9 11z"/><path d="M4 27h24"/>',
     svg: '<path d="M8 5h11l6 6v16H8z"/><path d="M19 5v6h6"/><path d="M12 20l3-4 3 3 2-2"/>',
   };
   function buildPalette() {
@@ -273,6 +294,7 @@
         E.addShape(CNC.text.make(st.w / 2 + (n % 5) * 6, st.h / 2 - (n % 5) * 6, st));
       }),
       el('hr'),
+      btn(ICONS.relief, 'Relief 3D', () => $('#fileRelief').click(), 'Graver une image en relief 3D (niveaux de gris)'),
       btn(ICONS.svg, 'Import SVG', () => $('#fileSvg').click(), 'Importer un fichier SVG'));
   }
 
@@ -376,6 +398,19 @@
     $('#btnOpen').onclick = () => $('#fileOpen').click();
     $('#fileOpen').onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ''; };
     $('#fileSvg').onchange = (e) => { if (e.target.files[0]) importSvgFile(e.target.files[0]); e.target.value = ''; };
+    $('#fileRelief').onchange = async (e) => {
+      const f = e.target.files[0]; e.target.value = '';
+      if (!f) return;
+      try {
+        const im = await CNC.relief.fromFile(f, 300);
+        const st = App.project.stock, asp = im.w / im.h;
+        let w = st.w * 0.8, h = w / asp;
+        if (h > st.h * 0.8) { h = st.h * 0.8; w = h * asp; }
+        const sh = G.make('relief', st.w / 2, st.h / 2, { w: CNC.round(w, 2), h: CNC.round(h, 2), img: im, name: f.name, relief: { invert: false, rough: true, allow: 0.3, fstep: 0 } });
+        sh.cut = { type: 'relief', depth: Math.min(3, st.t) };
+        E.addShape(sh);
+      } catch (err) { alert('Import de l\'image impossible : ' + err.message); }
+    };
     $('#projName').addEventListener('change', (e) => { App.project.name = e.target.value || 'Sans titre'; CNC.store.set('project', App.project); });
     $('#zIn').onclick = () => E.zoom(1.25);
     $('#zOut').onclick = () => E.zoom(0.8);

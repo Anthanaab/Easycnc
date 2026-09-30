@@ -9,7 +9,7 @@
     polygon: { w: 30, h: 30, sides: 6 },
     star: { w: 36, h: 36, sides: 5 },
   };
-  G.names = { rect: 'Rectangle', ellipse: 'Cercle', polygon: 'Polygone', star: 'Étoile', path: 'Tracé', text: 'Texte' };
+  G.names = { rect: 'Rectangle', ellipse: 'Cercle', polygon: 'Polygone', star: 'Étoile', path: 'Tracé', text: 'Texte', relief: 'Relief 3D' };
 
   G.make = (kind, x, y, opts) => {
     const d = G.defaults[kind] || { w: 20, h: 20 };
@@ -55,6 +55,8 @@
         }
         return [{ pts, closed: true }];
       }
+      case 'relief':
+        return [{ pts: [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], closed: true }];
       case 'text':
         return CNC.text.get(s).polys;
       case 'path':

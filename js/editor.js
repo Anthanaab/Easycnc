@@ -306,6 +306,7 @@
     online: { stroke: '#7c3aed', fill: null },
     pocket: { stroke: '#92400e', fill: true },
     vcarve: { stroke: '#be185d', fill: true },
+    relief: { stroke: '#0369a1', fill: null },
     none: { stroke: '#8a8f98', fill: null },
   };
 
@@ -449,6 +450,17 @@
       const polys = G.worldPolys(s);
       const style = CUT_STYLE[s.cut ? s.cut.type : 'none'] || CUT_STYLE.none;
       const sel = E.selection.includes(s.id);
+      if (s.kind === 'relief') { // aperçu de l'image (blanc = dessus, noir = fond)
+        const pv = CNC.relief.preview(s);
+        if (pv) {
+          ctx.save();
+          const [rcx, rcy] = w2s(s.x, s.y);
+          ctx.translate(rcx, rcy); ctx.rotate((-s.rot * Math.PI) / 180);
+          ctx.globalAlpha = E.mode === 'carve' ? 0.45 : 0.85;
+          ctx.drawImage(pv, (-s.w * view.s) / 2, (-s.h * view.s) / 2, s.w * view.s, s.h * view.s);
+          ctx.restore();
+        }
+      }
       trace(polys);
       if (style.fill && E.mode === 'design') {
         const a = 0.25 + 0.5 * CNC.clamp(s.cut.depth / Math.max(st.t, 0.1), 0, 1);

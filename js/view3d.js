@@ -305,6 +305,9 @@
   function refresh() {
     const { nx, ny, dx, dy, H, t, color, base, tabZ } = hm;
     const amber = new THREE.Color(0xf59e0b);
+    let minH = 0;
+    for (let k = 0; k < H.length; k++) if (H[k] < minH) minH = H[k];
+    const span = Math.max(0.5, Math.min(t, base - minH)); // dégradé réglé sur la profondeur réellement creusée
     const g = top.geometry;
     const pos = g.attributes.position.array, nor = g.attributes.normal.array, col = g.attributes.color.array;
     const bedC = new THREE.Color(0x3a4250);
@@ -324,7 +327,7 @@
         if (hh > base - 0.005) tmp.copy(color);
         else if (tabZ.some((z) => Math.abs(hh - z) < 0.03)) tmp.copy(amber);
         else if (hh <= -t + 0.01) tmp.copy(bedC);
-        else tmp.copy(color).lerp(cut, Math.min(1, 0.55 + ((base - hh) / t) * 0.45));
+        else tmp.copy(color).lerp(cut, Math.min(1, 0.3 + ((base - hh) / span) * 0.7));
         col[o] = tmp.r; col[o + 1] = tmp.g; col[o + 2] = tmp.b;
       }
     }
