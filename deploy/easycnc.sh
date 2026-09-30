@@ -83,6 +83,23 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
+# mot de passe root du conteneur (vide = aucun : accès par « pct enter » depuis l'hôte)
+if [ -z "${ROOT_PW+x}" ]; then
+  while :; do
+    ROOT_PW=$(whiptail --backtitle "EasyCNC" --title "Mot de passe root" --passwordbox \
+      "Mot de passe root du conteneur.\nLaissez vide pour ne pas en définir (accès via « pct enter » sur l'hôte)." 11 66 3>&1 1>&2 2>&3) || exit 0
+    [ -z "$ROOT_PW" ] && break
+    PW2=$(whiptail --backtitle "EasyCNC" --title "Mot de passe root" --passwordbox "Confirmez le mot de passe :" 9 66 3>&1 1>&2 2>&3) || exit 0
+    if [ "$ROOT_PW" = "$PW2" ] && [ "${#ROOT_PW}" -ge 5 ]; then break; fi
+    whiptail --backtitle "EasyCNC" --title "Mot de passe root" --msgbox "Les mots de passe ne correspondent pas, ou ils font moins de 5 caractères." 8 66
+  done
+fi
+ROOT_PW="${ROOT_PW:-}"
+ENABLE_SSH="${ENABLE_SSH:-no}"
+if [ -n "$ROOT_PW" ] && [ "$ENABLE_SSH" != "yes" ]; then
+  if whiptail --backtitle "EasyCNC" --title "SSH" --yesno "Activer l'accès SSH en root par mot de passe ?\n(à réserver au réseau local)" 10 62; then ENABLE_SSH=yes; fi
+fi
+
 header_info
 printf ' %sConteneur%s  %s (%s)   %sRessources%s  %s cœur(s), %s Mo, %s Go sur %s\n' "$BL" "$CL" "$CTID" "$CT_NAME" "$BL" "$CL" "$CORES" "$MEMORY" "$DISK" "$STORAGE"
 printf ' %sRéseau%s     %s sur %s %s\n\n' "$BL" "$CL" "$IP" "$BRIDGE" "${GW:+(passerelle $GW)}"
@@ -99,11 +116,13 @@ msg_ok "Modèle Debian 12 prêt"
 
 NET="name=eth0,bridge=$BRIDGE,ip=$IP"
 [ "$IP" != "dhcp" ] && [ -n "$GW" ] && NET="$NET,gw=$GW"
+PW_ARGS=()
+[ -n "$ROOT_PW" ] && PW_ARGS=(--password "$ROOT_PW")
 msg_info "Création du conteneur LXC $CTID"
 run pct create "$CTID" "$TEMPLATE_STORAGE:vztmpl/$TEMPLATE" \
   --hostname "$CT_NAME" --cores "$CORES" --memory "$MEMORY" --swap 256 \
   --rootfs "$STORAGE:$DISK" --net0 "$NET" --tags "cnc;easycnc" \
-  --unprivileged 1 --onboot 1 --start 1
+  --unprivileged 1 --onboot 1 --start 1 "${PW_ARGS[@]}"
 msg_ok "Conteneur LXC $CTID créé et démarré"
 
 msg_info "Attente du réseau"
@@ -139,6 +158,12 @@ else
   git clone '$REPO' /opt/easycnc
 fi
 chmod +x /opt/easycnc/deploy/*.sh
+if [ '$ENABLE_SSH' = yes ]; then
+  apt-get install -y openssh-server
+  sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+  systemctl enable --now ssh
+  systemctl restart ssh
+fi
 /opt/easycnc/deploy/install.sh "$CT_IP"
 printf '#!/usr/bin/env bash\nexec /opt/easycnc/deploy/update.sh "\$@"\n' > /usr/bin/update
 chmod +x /usr/bin/update
@@ -159,5 +184,7 @@ echo
 printf ' %s%s est accessible sur :%s  %shttps://%s%s\n' "$GN" "$APP" "$CL" "$BL" "$CT_IP" "$CL"
 printf ' %s1er accès : « Paramètres avancés » puis « Continuer vers… » (certificat interne).%s\n' "$DM" "$CL"
 printf ' %sMise à jour : tapez %supdate%s dans le conteneur (pct enter %s), ou : pct exec %s -- update%s\n' "$DM" "$YW" "$DM" "$CTID" "$CTID" "$CL"
+if [ -n "$ROOT_PW" ]; then printf ' %sAccès root : mot de passe défini (console Proxmox ou pct enter).%s\n' "$DM" "$CL"; fi
+if [ "$ENABLE_SSH" = yes ]; then printf ' %sSSH : ssh root@%s%s\n' "$DM" "$CT_IP" "$CL"; fi
 [ "$IP" = "dhcp" ] && printf ' %sAstuce : réservez cette IP dans votre DHCP (le certificat HTTPS est lié à l'\''adresse).%s\n' "$DM" "$CL"
 echo

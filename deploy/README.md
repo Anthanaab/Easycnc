@@ -45,7 +45,9 @@ bash -c "$(wget -qLO - https://raw.githubusercontent.com/Anthanaab/Easycnc/main/
 
 (Ou copier `easycnc.sh` sur l'hôte et lancer `bash easycnc.sh`.)
 
-Un menu propose des réglages par défaut (DHCP, 1 cœur, 512 Mo, 4 Go) ou avancés (ID, IP fixe, stockage…). Le script crée
+Un menu propose des réglages par défaut (DHCP, 1 cœur, 512 Mo, 4 Go) ou avancés (ID, IP fixe, stockage…), puis demande un
+mot de passe root (facultatif ; vide = accès par `pct enter <CTID>` depuis l'hôte) et, si un mot de passe est défini,
+l'activation de l'accès SSH root (à réserver au réseau local). Le script crée
 le LXC Debian 12, installe git + Caddy, clone le dépôt et publie l'appli en HTTPS. Un jeton GitHub n'est demandé que si le
 dépôt est privé.
 
