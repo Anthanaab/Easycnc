@@ -190,16 +190,16 @@
     const refreshZLimit = () => {
       const l = zLimit();
       zLimInfo.textContent = l === null
-        ? 'Limite basse du Z : non définie (la fraise peut descendre jusqu\'au plateau).'
-        : `Limite basse du Z : ${l.toFixed(2)} mm (coordonnées machine)${grbl.homed ? '' : ' - faites un homing pour qu\'elle soit active'}`;
+        ? 'Surface du plateau : non mémorisée (la fraise peut descendre jusqu\'à lui). Descendez la pointe jusqu\'au contact, puis mémorisez.'
+        : `Surface du plateau (pointe au contact) : ${l.toFixed(2)} mm en coordonnées machine. Déplacements manuels arrêtés 0,5 mm au-dessus ; 0,5 mm de tolérance dessous pour les découpes traversantes.${grbl.homed ? '' : ' Faites un homing pour qu\'elle soit active.'}`;
     };
     const zLimSet = el('button', { class: 'btn sm', onclick: () => {
       if (!grbl.connected) return alert('Connectez d\'abord la machine.');
       if (!grbl.homed) return alert('Faites d\'abord un homing (Z vers le haut) : la limite est mesurée depuis la position machine.');
       CNC.store.set(zKey(), CNC.round(grbl.status.mpos[2], 2));
       refreshZLimit();
-      CNC.toast('Limite basse du Z mémorisée : ' + CNC.round(grbl.status.mpos[2], 2) + ' mm');
-    } }, 'Mémoriser la position actuelle comme limite basse');
+      CNC.toast('Surface du plateau mémorisée : ' + CNC.round(grbl.status.mpos[2], 2) + ' mm');
+    } }, 'Mémoriser : la pointe touche le plateau');
     const zLimClear = el('button', { class: 'btn sm', onclick: () => { CNC.store.set(zKey(), null); refreshZLimit(); } }, 'Effacer');
     const zLimBox = el('div', { style: 'margin:8px 0' }, zLimInfo, el('div', { class: 'btns' }, zLimSet, zLimClear));
     const jogBtn = (label, dx, dy, dz, cls) => el('button', { class: cls || '', onclick: () => {
@@ -207,8 +207,8 @@
       const st = parseFloat(stepSel.value), lim = zLimit();
       let mz = dz * st;
       if (mz < 0 && lim !== null && grbl.homed) { // ne pas descendre sous la limite basse (plateau)
-        const allowed = grbl.status.mpos[2] - lim;
-        if (allowed < 0.01) { CNC.toast('Limite basse du Z atteinte (plateau)', 'err'); mz = 0; if (!dx && !dy) return; }
+        const allowed = grbl.status.mpos[2] - (lim + 0.5); // on s'arrête 0,5 mm au-dessus du plateau
+        if (allowed < 0.01) { CNC.toast('Plateau atteint : le Z s\'arrête 0,5 mm au-dessus', 'err'); mz = 0; if (!dx && !dy) return; }
         else mz = -Math.min(-mz, allowed);
       }
       grbl.jog(dx * st, dy * st, mz, parseFloat(jogFeed.value) || 800).catch((e) => log('e', e.message));
@@ -304,8 +304,8 @@
       }
       wizState.busy = true; wizState.err = ''; wizRender();
       grbl.lastPrb = null;
-      const zlP = zLimit(), allowedP = zlP !== null && grbl.homed ? grbl.status.mpos[2] - zlP : Infinity;
-      if (allowedP < 1) { wizState.busy = false; wizState.err = 'La fraise est déjà à la limite basse du Z (plateau) : relevez-la avant de palper.'; return wizRender(); }
+      const zlP = zLimit(), allowedP = zlP !== null && grbl.homed ? grbl.status.mpos[2] - (zlP + 0.5) : Infinity;
+      if (allowedP < 1) { wizState.busy = false; wizState.err = 'La fraise est déjà au niveau du plateau (limite mémorisée) : relevez-la avant de palper.'; return wizRender(); }
       const depthP = Math.min(pr.maxDepth, allowedP);
       try {
         log('i', 'Palpage Z…');
@@ -459,8 +459,8 @@
           if (!go) return;
         } else {
           const deepestZ = grbl.status.wco[2] + job.minZ + (dry ? dryZ : 0);
-          if (deepestZ < zl - 0.01) {
-            const go = await CNC.confirmModal('Le parcours descend sous la limite du Z', el('div', {}, el('div', { class: 'warn' }, `D'après votre zéro Z, la fraise descendrait à Z machine = ${CNC.round(deepestZ, 1)} mm, sous votre limite basse (${CNC.round(zl, 1)} mm) : elle traverserait le plateau.`), el('div', {}, 'Réduisez la profondeur, ou relevez le Z0.')), 'Lancer quand même');
+          if (deepestZ < zl - 0.5 - 0.01) { // 0,5 mm de tolérance : une découpe traversante descend de 0,2 mm dans le plateau
+            const go = await CNC.confirmModal('Le parcours descend sous la limite du Z', el('div', {}, el('div', { class: 'warn' }, `D'après votre zéro Z, la fraise descendrait à Z machine = ${CNC.round(deepestZ, 1)} mm, sous la surface de votre plateau (${CNC.round(zl, 1)} mm) de ${CNC.round(zl - deepestZ, 1)} mm : elle l'entamerait trop.`), el('div', {}, 'Réduisez la profondeur, ou relevez le Z0 (palpez sur une pièce plus haute).')), 'Lancer quand même');
             if (!go) return;
           }
         }
