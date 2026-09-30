@@ -41,7 +41,7 @@ Raccourcis : molette = zoom, Suppr, Ctrl+Z/Y, Ctrl+D (dupliquer), Ctrl+A, flèch
 - **Aperçu** : plan 2D et vue 3D avec matière enlevée, simulation animée, mesures.
 - **Laser (diode)** : contour, remplissage et gravure d’image en niveaux de gris, réglages par matériau, cadrage à faible puissance, vérification du mode laser GRBL (`$32`). Puissance et longueur d’onde du module à renseigner par l’utilisateur.
 - **Enregistrement** : réglages et projets sur le serveur (navigateur de projets : ouvrir, dupliquer, supprimer), sauvegarde quotidienne automatique ; repli sur le navigateur si le serveur est absent.
-- **Machine** : profils par marque, 33 fraises (droites, sphériques, V, hélices spéciales, surfaçage), matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé, **essai à blanc**, chargement d’un fichier G-code, sauvegarde/restauration des réglages.
+- **Machine** : profils par marque, 34 fraises (droites, sphériques, V, hélices spéciales, surfaçage), matériaux, connexion GRBL (Web Serial), déplacements, palpage Z guidé, **essai à blanc**, chargement d’un fichier G-code, sauvegarde/restauration des réglages.
 
 ## Limites actuelles
 
