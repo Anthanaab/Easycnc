@@ -183,8 +183,35 @@
     const droToggle = el('button', { class: 'btn sm', onclick: () => { showMachine = !showMachine; updateConn(); } }, 'Machine ⇄ Travail');
     const stepSel = el('select', {}, [0.1, 1, 5, 10, 50].map((v) => el('option', { value: v, selected: v === 1 }, v + ' mm')));
     const jogFeed = el('input', { type: 'number', value: 800 });
+    // ---- limite basse du Z (protège le plateau) : position machine mémorisée après un homing, appliquée par l'appli ----
+    const zKey = () => 'zlimit.' + P().machineId;
+    const zLimit = () => CNC.store.get(zKey(), null);
+    const zLimInfo = el('div', { class: 'muted' });
+    const refreshZLimit = () => {
+      const l = zLimit();
+      zLimInfo.textContent = l === null
+        ? 'Limite basse du Z : non définie (la fraise peut descendre jusqu\'au plateau).'
+        : `Limite basse du Z : ${l.toFixed(2)} mm (coordonnées machine)${grbl.homed ? '' : ' - faites un homing pour qu\'elle soit active'}`;
+    };
+    const zLimSet = el('button', { class: 'btn sm', onclick: () => {
+      if (!grbl.connected) return alert('Connectez d\'abord la machine.');
+      if (!grbl.homed) return alert('Faites d\'abord un homing (Z vers le haut) : la limite est mesurée depuis la position machine.');
+      CNC.store.set(zKey(), CNC.round(grbl.status.mpos[2], 2));
+      refreshZLimit();
+      CNC.toast('Limite basse du Z mémorisée : ' + CNC.round(grbl.status.mpos[2], 2) + ' mm');
+    } }, 'Mémoriser la position actuelle comme limite basse');
+    const zLimClear = el('button', { class: 'btn sm', onclick: () => { CNC.store.set(zKey(), null); refreshZLimit(); } }, 'Effacer');
+    const zLimBox = el('div', { style: 'margin:8px 0' }, zLimInfo, el('div', { class: 'btns' }, zLimSet, zLimClear));
     const jogBtn = (label, dx, dy, dz, cls) => el('button', { class: cls || '', onclick: () => {
-      if (grbl.connected && !grbl.job) { const st = parseFloat(stepSel.value); grbl.jog(dx * st, dy * st, dz * st, parseFloat(jogFeed.value) || 800).catch((e) => log('e', e.message)); }
+      if (!grbl.connected || grbl.job) return;
+      const st = parseFloat(stepSel.value), lim = zLimit();
+      let mz = dz * st;
+      if (mz < 0 && lim !== null && grbl.homed) { // ne pas descendre sous la limite basse (plateau)
+        const allowed = grbl.status.mpos[2] - lim;
+        if (allowed < 0.01) { CNC.toast('Limite basse du Z atteinte (plateau)', 'err'); mz = 0; if (!dx && !dy) return; }
+        else mz = -Math.min(-mz, allowed);
+      }
+      grbl.jog(dx * st, dy * st, mz, parseFloat(jogFeed.value) || 800).catch((e) => log('e', e.message));
     } }, label);
     const cmd = (c) => () => { if (grbl.connected) grbl.send(c).catch((e) => log('e', e.message)); };
     const zeroBtns = [
@@ -277,10 +304,13 @@
       }
       wizState.busy = true; wizState.err = ''; wizRender();
       grbl.lastPrb = null;
+      const zlP = zLimit(), allowedP = zlP !== null && grbl.homed ? grbl.status.mpos[2] - zlP : Infinity;
+      if (allowedP < 1) { wizState.busy = false; wizState.err = 'La fraise est déjà à la limite basse du Z (plateau) : relevez-la avant de palper.'; return wizRender(); }
+      const depthP = Math.min(pr.maxDepth, allowedP);
       try {
         log('i', 'Palpage Z…');
         await grbl.send('G91');
-        await grbl.send(`G38.2 Z-${pr.maxDepth} F${pr.feed}`);
+        await grbl.send(`G38.2 Z-${CNC.num(depthP)} F${pr.feed}`);
         // GRBL envoie [PRB:x,y,z:1] en cas de contact ; une alarme (état « Alarm ») sinon
         await new Promise((r) => setTimeout(r, 400));
         if (grbl.status.state === 'Alarm' || !grbl.lastPrb || !grbl.lastPrb.ok) throw new Error('aucun contact détecté');
@@ -345,7 +375,7 @@
 
     const c5 = card(5, 'Usinage',
       el('div', { class: 'row' }, connBtn, stateBadge),
-      el('div', { class: 'dro' }, dro), el('div', { class: 'row', style: 'justify-content:space-between' }, droLabel, droToggle),
+      el('div', { class: 'dro' }, dro), el('div', { class: 'row', style: 'justify-content:space-between' }, droLabel, droToggle), zLimBox,
       pinBadge, wiz, settingsNote,
       el('div', { class: 'row' }, el('label', {}, 'Pas'), el('div', { class: 'grow' }, stepSel), el('label', { style: 'width:auto' }, 'F'), el('div', { style: 'width:70px' }, jogFeed)),
       el('div', { class: 'jog' },
@@ -388,6 +418,7 @@
       const coords = showMachine ? s.mpos : s.wpos;
       dro.forEach((d, i) => { d.lastChild.textContent = c ? (coords[i] || 0).toFixed(2) : '—'; });
       droLabel.textContent = showMachine ? 'Coordonnées MACHINE (depuis le homing)' : 'Coordonnées de travail (depuis votre zéro)';
+      refreshZLimit();
       pauseBtn.textContent = grbl.job && grbl.job.paused ? '▶ Reprendre' : '⏸ Pause';
     }
 
@@ -420,6 +451,20 @@
         return;
       }
       const dry = !extJob && dryChk.checked;
+      // limite basse du Z mémorisée par l'utilisateur (protège le plateau)
+      const zl = zLimit();
+      if (job && !job.laser && !extJob && job.minZ !== undefined && zl !== null) {
+        if (!grbl.homed) {
+          const go = await CNC.confirmModal('Limite du Z non vérifiable', el('div', {}, el('div', { class: 'warn' }, 'Vous avez défini une limite basse du Z, mais aucun homing n\'a été fait depuis la connexion : la position machine n\'est pas fiable.'), el('div', {}, 'Faites un homing, puis relancez. Lancer quand même sans protection du plateau ?')), 'Lancer quand même');
+          if (!go) return;
+        } else {
+          const deepestZ = grbl.status.wco[2] + job.minZ + (dry ? dryZ : 0);
+          if (deepestZ < zl - 0.01) {
+            const go = await CNC.confirmModal('Le parcours descend sous la limite du Z', el('div', {}, el('div', { class: 'warn' }, `D'après votre zéro Z, la fraise descendrait à Z machine = ${CNC.round(deepestZ, 1)} mm, sous votre limite basse (${CNC.round(zl, 1)} mm) : elle traverserait le plateau.`), el('div', {}, 'Réduisez la profondeur, ou relevez le Z0.')), 'Lancer quand même');
+            if (!go) return;
+          }
+        }
+      }
       // limites logicielles actives : on prévient si le parcours descendrait sous la course Z réglée dans la machine
       if (job && !job.laser && !extJob && job.minZ !== undefined && grbl.settings.$20 === 1 && grbl.settings.$132) {
         const deepest = grbl.status.wco[2] + job.minZ + (dry ? dryZ : 0), lim = grbl.settings.$132;

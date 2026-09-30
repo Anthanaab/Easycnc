@@ -6,7 +6,7 @@
   class Grbl {
     constructor() {
       this.port = null; this.writer = null; this.reader = null;
-      this.connected = false;
+      this.connected = false; this.homed = false; this.homing = false;
       this.inflight = []; this.manual = []; this.job = null;
       this.rx = '';
       this.status = { pins: '', state: 'Déconnecté', mpos: [0, 0, 0], wpos: [0, 0, 0], wco: [0, 0, 0], feed: 0, spindle: 0 };
@@ -30,7 +30,7 @@
     }
 
     async disconnect() {
-      this.connected = false;
+      this.connected = false; this.homed = false; this.homing = false;
       clearInterval(this.timer);
       this.job = null; this.inflight = []; this.manual = [];
       try { this.reader && (await this.reader.cancel()); } catch (e) { /* ignoré */ }
@@ -95,6 +95,10 @@
       this.status.pins = '';
       const s = this.status;
       s.state = parts[0].split(':')[0];
+      // suivi du homing : « Home » pendant la recherche des contacts, puis « Idle » = position machine valide
+      if (s.state === 'Home') this.homing = true;
+      else if (this.homing && s.state === 'Idle') { this.homed = true; this.homing = false; }
+      else if (s.state === 'Alarm') { this.homed = false; this.homing = false; }
       let gotM = false, gotW = false;
       for (const p of parts.slice(1)) {
         const [k, v] = p.split(':');
@@ -176,6 +180,7 @@
       this.rt(0x21);
       await new Promise((r) => setTimeout(r, 150));
       this.rt(0x18); // reset logiciel : arrête aussi la broche
+      this.homed = false; // la position machine n'est plus garantie après un reset
       const had = this.job;
       this.job = null; this.inflight = []; this.manual = [];
       if (had) this.on.job({ done: true, aborted: true, total: had.total, acked: had.acked });
