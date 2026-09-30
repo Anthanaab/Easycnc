@@ -217,13 +217,15 @@
           'Câble du palpeur branché sur l\'entrée « probe » de la carte',
           'Plaque de touche posée à plat sur le matériau, sous la fraise'].map((t) => {
           const cb = el('input', { type: 'checkbox' });
-          cb.addEventListener('change', () => { next.disabled = !checks.every((c) => c.cb.checked); });
+          cb.addEventListener('change', () => refreshNext());
           const lab = el('label', { style: 'display:flex;gap:8px;margin:6px 0;align-items:flex-start' }, cb, t);
           lab.cb = cb; return lab;
         });
         const next = el('button', { class: 'btn primary sm', disabled: true, onclick: () => { wizState.step = 2; wizRender(); } }, 'Suivant');
-        const plate = App.field('Plaque', { get: () => pr.plate, set: (v) => { CNC.setProbe(CNC.machine(P().machineId), 'plate', v); }, unit: 'mm', min: 0.1 });
-        plate.refresh(); plate.row.style.flexWrap = 'wrap'; plate.row.append(el('div', { class: 'muted', style: 'flex-basis:100%' }, 'Enregistré dans le profil de la machine.'));
+        const refreshNext = () => { next.disabled = !(checks.every((c) => c.cb.checked) && probeParams().plate > 0); };
+        const plate = App.field('Épaisseur plaque', { get: () => pr.plate || null, set: (v) => { CNC.setProbe(CNC.machine(P().machineId), 'plate', v); refreshNext(); }, unit: 'mm', min: 0.1 });
+        plate.refresh(); plate.row.style.flexWrap = 'wrap'; plate.row.append(el('div', { class: 'muted', style: 'flex-basis:100%' }, 'Mesurez-la au pied à coulisse : elle sert à régler Z0. Enregistrée pour cette machine.'));
+        refreshNext();
         wiz.append(stepper(1), el('b', {}, 'Préparation'), ...checks, plate.row, wizBtns(next, cancel));
         return;
       }
@@ -264,6 +266,7 @@
 
     async function wizRun() {
       const pr = probeParams();
+      if (!(pr.plate > 0)) { wizState.err = 'Renseignez l\'épaisseur de votre plaque de palpage (étape 1).'; return wizRender(); }
       const stt = grbl.status.state;
       if (stt !== 'Idle') {
         wizState.err = stt === 'Alarm' ? 'La machine est en alarme : cliquez sur « Déverrouiller $X », puis réessayez.' : `La machine n'est pas prête (état : ${stt}). Attendez l'état « Idle ».`;
@@ -347,7 +350,7 @@
         jogBtn('X−', -1, 0, 0), el('span'), jogBtn('X+', 1, 0, 0), jogBtn('Z−', 0, 0, -1, 'z'),
         jogBtn('↙', -1, -1, 0), jogBtn('Y−', 0, -1, 0), jogBtn('↘', 1, -1, 0), el('span')),
       el('div', { class: 'muted' }, 'Positionnez la fraise à l\'origine choisie, puis définissez le zéro :'),
-      el('div', { class: 'btns' }, zeroBtns, probeBtn, homeBtn, el('button', { class: 'btn sm', onclick: cmd('$X') }, 'Déverrouiller $X'), el('button', { class: 'btn sm', onclick: cmd('$$') }, 'Lire les réglages')),
+      el('div', { class: 'btns' }, zeroBtns, probeBtn, homeBtn, el('button', { class: 'btn sm', onclick: cmd('$X') }, 'Déverrouiller $X'), el('button', { class: 'btn sm', onclick: cmd('$$') }, 'Lire les réglages'), el('button', { class: 'btn sm', onclick: () => { if (grbl.connected) CNC.grblSettings(grbl, log); else alert('Connectez d\'abord la machine.'); } }, 'Réglages GRBL…')),
       dryBox,
       el('div', { class: 'btns' }, startBtn, pauseBtn, stopBtn),
       el('div', { class: 'progress' }, bar), progText, consoleBox, cmdIn);

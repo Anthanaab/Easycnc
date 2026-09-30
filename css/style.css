@@ -140,3 +140,8 @@ ul.checks { padding-left: 18px; margin: 8px 0; } ul.checks li { margin: 4px 0; }
 .pinfo { min-width: 0; } .pinfo b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pbtns { display: flex; gap: 6px; flex: none; }
 @media (max-width: 1150px) { .sync { display: none; } }
+
+.gs h4 { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.gsrow { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.gsl { min-width: 0; flex: 1; } .gsi { flex: none; width: 150px; } .gsmask { display: flex; gap: 12px; }
+.gsi input[type=number] { width: 100%; }
