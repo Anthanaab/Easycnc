@@ -1,0 +1,11 @@
+Fichiers d'essai pour la gravure 3D (relief) avec une fraise en V 30° pointe 0,1 mm.
+
+relief-ondes.png
+  Image en niveaux de gris (200 x 200 px) : ondes concentriques lisses.
+  Blanc = surface du materiau, noir = fond. A importer avec le bouton "Relief 3D".
+
+test-relief-ondes.easycnc.json
+  Projet deja regle : materiau 80 x 80 x 12 mm (MDF), fraise V 30° (pointe 0,1 mm),
+  relief de 40 x 40 mm au centre, profondeur maximale 1 mm, sans ebauche.
+  A ouvrir via "Ouvrir" puis "Importer un fichier...".
+  Duree estimee : environ 22 minutes. Adaptez la taille du materiau a votre piece.
