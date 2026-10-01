@@ -8,7 +8,7 @@
     const E = CNC.editor;
     const P = () => App.project;
     const grbl = App.grbl;
-    let job = null, timer = null, playing = false;
+    let job = null, timer = null, playing = false, live = null;
 
     const card = (num, title, ...kids) => el('div', { class: 'card' }, el('h3', {}, el('span', { class: 'num' }, num), title), ...kids);
     const select = (onchange) => { const s = el('select'); s.addEventListener('change', () => onchange(s.value)); return s; };
@@ -417,6 +417,7 @@
     });
 
     function updateConn() {
+      liveUpdate();
       const c = grbl.connected, running = !!grbl.job;
       connBtn.textContent = c ? 'Déconnecter' : 'Connecter la machine';
       connBtn.classList.toggle('primary', !c);
@@ -461,6 +462,7 @@
             el('li', {}, 'Ne jamais laisser la machine sans surveillance ; arrêt d\'urgence accessible'),
             el('li', {}, 'Zéro X/Y défini sur ' + (P().origin === 'center' ? 'le centre' : 'le coin bas-gauche') + ' du matériau'))), 'Lancer');
         if (!okL) return;
+        beginLive(0);
         grbl.startJob(CNC.gcode.clean(job.lines));
         updateConn();
         return;
@@ -504,6 +506,7 @@
         el('div', {}, 'Vérifiez avant de lancer :'), el('ul', { class: 'checks' }, items.map((t) => el('li', {}, t)))), 'Lancer');
       if (!ok) return;
       const lines = extJob ? extJob.lines : dry ? CNC.gcode.generate({ ...job.args, dry: { zOffset: dryZ } }) : job.lines;
+      if (extJob) live = null; else beginLive(dry ? dryZ : 0);
       grbl.startJob(CNC.gcode.clean(lines));
       updateConn();
     });
@@ -511,10 +514,46 @@
     grbl.on.log = log;
     grbl.on.status = updateConn;
     grbl.on.close = () => { updateConn(); log('i', 'Port fermé.'); };
+    // ---------- suivi en direct : l'aperçu (2D + 3D) suit la position réelle de la fraise / du laser ----------
+    function beginLive(zoff) {
+      if (!job || !E.sim || E.sim.moves !== job.moves) { live = null; return; }
+      stopPlay();
+      live = { idx: 0, zoff: zoff || 0, origin: originOf(), last: 0 };
+      E.setProgress(0);
+      slider.value = 0;
+    }
+    function segDist(P, a, b) { // distance 3D d'un point à un segment + paramètre t
+      const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, l2 = dx * dx + dy * dy + dz * dz;
+      let t = l2 ? ((P[0] - a.x) * dx + (P[1] - a.y) * dy + (P[2] - a.z) * dz) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      return { d: Math.hypot(P[0] - (a.x + t * dx), P[1] - (a.y + t * dy), P[2] - (a.z + t * dz)), t };
+    }
+    function liveUpdate() {
+      if (!live || !grbl.job || !job || !E.sim || E.sim.moves !== job.moves) return;
+      const s = grbl.status, moves = E.sim.moves, cum = E.sim.cum, n = moves.length;
+      // en mode laser le Z n'intervient pas dans le parcours : on l'ignore
+      const P = [s.wpos[0] + live.origin.x, s.wpos[1] + live.origin.y, job.laser ? 0 : s.wpos[2] - live.zoff];
+      let best = null;
+      const end = Math.min(n - 1, live.idx + 900); // recherche vers l'avant seulement
+      for (let i = Math.max(1, live.idx); i <= end; i++) {
+        const r = segDist(P, moves[i - 1], moves[i]);
+        if (!best || r.d < best.d) best = { i, t: r.t, d: r.d };
+        if (r.d < 0.02) break; // correspondance exacte : inutile de chercher plus loin
+      }
+      if (!best || best.d > 6) return; // trop loin du parcours : on n'actualise pas
+      live.idx = Math.max(live.idx, best.i - 1);
+      const dist = cum[best.i - 1] + best.t * (cum[best.i] - cum[best.i - 1]);
+      live.last = Math.max(live.last, dist);
+      const p = Math.min(1, live.last / (E.sim.total || 1));
+      slider.value = p * 1000;
+      E.setProgress(p);
+    }
+
     grbl.on.job = (j) => {
       const pct = j.total ? Math.round((j.acked / j.total) * 100) : 0;
+      if (j.done) { if (live && !j.aborted && E.sim) { E.setProgress(1); slider.value = 1000; } live = null; }
       bar.style.width = pct + '%';
-      progText.textContent = j.done ? (j.aborted ? 'Interrompu.' : 'Terminé.') : `${j.acked} / ${j.total} lignes (${pct} %)`;
+      progText.textContent = j.done ? (j.aborted ? 'Interrompu.' : 'Terminé.') : `${j.acked} / ${j.total} lignes (${pct} %)${live ? ' - suivi en direct dans l\'aperçu' : ''}`;
       if (j.error) log('e', 'Erreur GRBL : ' + j.error);
       updateConn();
     };
