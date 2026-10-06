@@ -15,12 +15,13 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easycnc/main/d
 Variables surchargeables :
 
 ```bash
-CTID=210 HOSTNAME=easycnc CORES=2 RAM=2048 DISK=8 STORAGE=local-lvm BRIDGE=vmbr0 \
+CTID=210 CORES=2 RAM=2048 DISK=8 STORAGE=local-lvm BRIDGE=vmbr0 \
   bash create-ct.sh
 ```
 
-Le script crée le conteneur, l'installe (Node 20, nginx, build) et affiche
-l'URL `https://<ip-du-conteneur>/`.
+Par défaut : **nom `Easycnc`** et **ID choisi automatiquement** (le prochain libre
+après tes conteneurs/VM existants). Le script crée le conteneur, l'installe
+(Node 20, nginx, build) et affiche l'URL `https://<ip-du-conteneur>/`.
 
 ## Dans un LXC Debian/Ubuntu existant (en root)
 

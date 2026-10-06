@@ -6,13 +6,14 @@
 # Utilisation (sur l'hote Proxmox) :
 #   bash create-ct.sh
 #
-# Surcharge via variables d'environnement :
-#   CTID=200 HOSTNAME=easycnc CORES=2 RAM=2048 DISK=8 STORAGE=local-lvm BRIDGE=vmbr0 bash create-ct.sh
+# L'ID du conteneur est choisi automatiquement (prochain libre apres tes CT/VM),
+# le nom est "Easycnc". Surcharge possible :
+#   CTID=210 CORES=2 RAM=2048 DISK=8 STORAGE=local-lvm BRIDGE=vmbr0 bash create-ct.sh
 #
 set -euo pipefail
 
-CTID="${CTID:-200}"
-HOSTNAME="${HOSTNAME:-easycnc}"
+CTID="${CTID:-}"
+HOSTNAME="${HOSTNAME:-Easycnc}"
 CORES="${CORES:-2}"
 RAM="${RAM:-2048}"
 DISK="${DISK:-8}"
@@ -26,6 +27,16 @@ if ! command -v pct >/dev/null 2>&1; then
   echo "pct introuvable : ce script doit etre lance sur un noeud Proxmox." >&2
   exit 1
 fi
+
+# ID automatique : le prochain libre apres les CT/VM existants.
+if [ -z "$CTID" ]; then
+  HIGHEST="$( { pct list 2>/dev/null | awk 'NR>1{print $1}'; qm list 2>/dev/null | awk 'NR>1{print $1}'; } | sort -n | tail -1 )"
+  if [ -n "$HIGHEST" ]; then CTID="$((HIGHEST + 1))"; else CTID=200; fi
+  while pct status "$CTID" >/dev/null 2>&1 || qm status "$CTID" >/dev/null 2>&1; do
+    CTID="$((CTID + 1))"
+  done
+fi
+echo "==> ID du conteneur : $CTID"
 
 echo "==> Modele Debian 12"
 pveam update >/dev/null 2>&1 || true
