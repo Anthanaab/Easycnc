@@ -117,6 +117,8 @@ systemctl reload nginx
 echo "Systeme + EasyCNC mis a jour."
 UPD
 chmod +x /usr/local/bin/update
+# /usr/bin est toujours dans le PATH (certains conteneurs n'ont pas /usr/local/bin).
+ln -sf /usr/local/bin/update /usr/bin/update
 
 echo
 echo "======================================================"
