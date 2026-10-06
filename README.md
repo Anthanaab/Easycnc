@@ -82,3 +82,10 @@ npm run test:e2e        # nécessite : npm run test:install (une fois)
 
 React + TypeScript + Vite · Three.js (3D) · Clipper (offsets/booléens) ·
 opentype.js (texte) · JSZip (PCB) · Web Serial (GRBL) · PWA (vite-plugin-pwa).
+
+## Licence & contribution
+
+- Licence **MIT** — voir [`LICENSE`](LICENSE).
+- Licences des composants tiers (polices, bibliothèques) — voir [`THIRD_PARTY.md`](THIRD_PARTY.md).
+- Pour contribuer — voir [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Déploiement LXC Proxmox — voir [`deploy/proxmox/README.md`](deploy/proxmox/README.md).
