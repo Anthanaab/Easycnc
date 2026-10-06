@@ -13,7 +13,7 @@
 set -euo pipefail
 
 CTID="${CTID:-}"
-HOSTNAME="${HOSTNAME:-Easycnc}"
+CT_HOSTNAME="${CT_HOSTNAME:-Easycnc}"
 CORES="${CORES:-2}"
 RAM="${RAM:-2048}"
 DISK="${DISK:-8}"
@@ -51,9 +51,9 @@ if ! pveam list local 2>/dev/null | grep -q "$TEMPLATE_NAME"; then
 fi
 TEMPLATE="local:vztmpl/${TEMPLATE_NAME}"
 
-echo "==> Creation du conteneur $CTID ($HOSTNAME)"
+echo "==> Creation du conteneur $CTID ($CT_HOSTNAME)"
 pct create "$CTID" "$TEMPLATE" \
-  --hostname "$HOSTNAME" \
+  --hostname "$CT_HOSTNAME" \
   --cores "$CORES" \
   --memory "$RAM" \
   --swap 512 \
@@ -86,7 +86,7 @@ pct exec "$CTID" -- bash /root/install.sh "$REPO_URL" "$BRANCH"
 IP="$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 echo "======================================================"
-echo " Conteneur $CTID ($HOSTNAME) pret."
+echo " Conteneur $CTID ($CT_HOSTNAME) pret."
 echo " Ouvre : https://${IP}/  (accepter le certificat auto-signe)"
 echo " Console : pct enter $CTID   |   Mise a jour : pct exec $CTID -- update"
 echo "======================================================"
