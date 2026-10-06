@@ -89,10 +89,15 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-# script de mise a jour
-cat > /usr/local/bin/easycnc-update <<'UPD'
+# commande de mise a jour (systeme + EasyCNC)
+cat > /usr/local/bin/update <<'UPD'
 #!/usr/bin/env bash
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+echo "==> Mise a jour du systeme"
+apt-get update
+apt-get -y upgrade
+echo "==> Mise a jour d'EasyCNC"
 cd /opt/easycnc
 git pull --ff-only
 npm ci
@@ -100,13 +105,13 @@ npm run build
 rm -rf /var/www/easycnc/*
 cp -r /opt/easycnc/dist/. /var/www/easycnc/
 systemctl reload nginx
-echo "EasyCNC mis a jour."
+echo "Systeme + EasyCNC mis a jour."
 UPD
-chmod +x /usr/local/bin/easycnc-update
+chmod +x /usr/local/bin/update
 
 echo
 echo "======================================================"
 echo " EasyCNC installe."
 echo " Ouvre : https://${IP}/  (certificat auto-signe a accepter)"
-echo " Mise a jour : easycnc-update"
+echo " Mise a jour : update"
 echo "======================================================"

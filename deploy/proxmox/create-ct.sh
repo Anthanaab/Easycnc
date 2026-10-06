@@ -77,5 +77,5 @@ echo
 echo "======================================================"
 echo " Conteneur $CTID ($HOSTNAME) pret."
 echo " Ouvre : https://${IP}/  (accepter le certificat auto-signe)"
-echo " Console : pct enter $CTID   |   Mise a jour : pct exec $CTID -- easycnc-update"
+echo " Console : pct enter $CTID   |   Mise a jour : pct exec $CTID -- update"
 echo "======================================================"

@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easycnc/main/deploy/proxm
 ## Mise à jour
 
 ```bash
-easycnc-update          # dans le conteneur : git pull + rebuild + reload nginx
+update          # dans le conteneur : MAJ système (apt) + git pull + rebuild + reload nginx
 ```
 
 ## Accès
