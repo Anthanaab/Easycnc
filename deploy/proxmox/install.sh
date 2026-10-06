@@ -22,6 +22,15 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Garde-fou : ne jamais installer sur l'HOTE Proxmox lui-meme.
+if [ -d /etc/pve ] || command -v pveversion >/dev/null 2>&1; then
+  echo "ERREUR : cet hote est un noeud Proxmox." >&2
+  echo "install.sh doit tourner DANS le conteneur LXC." >&2
+  echo "Sur l'hote, cree d'abord le conteneur avec :" >&2
+  echo "  bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easycnc/main/deploy/proxmox/create-ct.sh)\"" >&2
+  exit 1
+fi
+
 echo "==> Paquets de base"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
