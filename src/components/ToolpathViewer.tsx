@@ -160,7 +160,7 @@ export function ToolpathViewer() {
   useEffect(() => {
     const current = refs.current
     if (!current) return
-    const position = status?.wpos ?? status?.mpos
+    const position = status?.mpos ?? status?.wpos
     if (!position) {
       current.tool.visible = false
       return
