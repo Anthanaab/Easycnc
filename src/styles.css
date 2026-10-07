@@ -1026,7 +1026,42 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 280px;
+}
+
+.bit-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--accent);
+}
+
+.bit-preview-text {
+  min-width: 0;
+}
+
+.bit-preview-text b {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bit-preview-text span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -1036,41 +1071,45 @@ select:focus {
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin: 6px 0 3px;
 }
 
-.bit-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-}
-
-.bit-btn {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 4px 0 2px;
+.bit-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
 }
 
-.bit-btn:hover {
-  border-color: #364657;
-  color: var(--text);
+.bit-row:hover {
+  border-color: var(--border);
+  background: var(--panel-2);
 }
 
-.bit-btn.active {
+.bit-row.active {
   border-color: var(--accent);
-  color: var(--accent);
   background: rgba(53, 208, 186, 0.08);
 }
 
+.bit-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bit-dia {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
+  flex-shrink: 0;
 }
 
 .bit-icon {
