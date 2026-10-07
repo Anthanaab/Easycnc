@@ -383,6 +383,9 @@ export function LaserTab() {
             <button className="btn tiny" disabled={!connected} onClick={() => void sendCommand('$32=1')}>
               {t('Activer $32=1')}
             </button>
+            <button className="btn tiny" disabled={!connected} onClick={() => void sendCommand('$32=0')} style={{ gridColumn: '1 / -1' }}>
+              {t('Désactiver $32=0')}
+            </button>
           </div>
           {!laserModeOn && settings[32] !== undefined && (
             <p className="warn notes">{t('Le mode laser n\'est pas actif. Activez $32=1 pour que la puissance S suive la vitesse.')}</p>

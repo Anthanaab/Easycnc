@@ -13,7 +13,7 @@ function machine(seed: MachineSeed): MachineProfile {
     maxShank: 7,
     preamble: '',
     postamble: '',
-    probe: { ...DEFAULT_PROBE, ...(seed.probe ?? {}) },
+    probe: { ...DEFAULT_PROBE, maxDepth: seed.area.z, ...(seed.probe ?? {}) },
     builtin: true,
     ...seed,
   }

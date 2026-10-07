@@ -240,6 +240,7 @@ const EN: Record<string, string> = {
   'Mode laser ($32)': 'Laser mode ($32)',
   'Lire $$': 'Read $$',
   'Activer $32=1': 'Enable $32=1',
+  'Désactiver $32=0': 'Disable $32=0',
   'Le mode laser n\'est pas actif. Activez $32=1 pour que la puissance S suive la vitesse.': 'Laser mode is off. Enable $32=1 so power S follows speed.',
   'Puissance (S max)': 'Power (max S)',
   'Remplissage (mm)': 'Fill (mm)',
