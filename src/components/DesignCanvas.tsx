@@ -22,6 +22,7 @@ export function DesignCanvas({ result }: Props) {
   const view = useCamStore((s) => s.view)
   const select = useCamStore((s) => s.select)
   const updateShape = useCamStore((s) => s.updateShape)
+  const setStock = useCamStore((s) => s.setStock)
   const setView = useCamStore((s) => s.setView)
   const pushHistory = useCamStore((s) => s.pushHistory)
   const setDragging = useCamStore((s) => s.setDragging)
@@ -47,7 +48,7 @@ export function DesignCanvas({ result }: Props) {
   }, [images])
 
   const drag = useRef<{
-    mode: 'none' | 'pan' | 'move' | 'resize'
+    mode: 'none' | 'pan' | 'move' | 'move-stock' | 'resize'
     shapeId?: string
     handle?: string
     startBounds?: Bounds
@@ -58,7 +59,9 @@ export function DesignCanvas({ result }: Props) {
     panY: number
     shapeX: number
     shapeY: number
-  }>({ mode: 'none', startX: 0, startY: 0, panX: 0, panY: 0, shapeX: 0, shapeY: 0 })
+    stockX: number
+    stockY: number
+  }>({ mode: 'none', startX: 0, startY: 0, panX: 0, panY: 0, shapeX: 0, shapeY: 0, stockX: 0, stockY: 0 })
 
   useEffect(() => {
     const container = containerRef.current
@@ -114,6 +117,13 @@ export function DesignCanvas({ result }: Props) {
     return null
   }
 
+  const stockScreenRect = () => {
+    const c = toScreenPoint({ x: stock.x, y: stock.y })
+    const halfW = (stock.width * view.zoom) / 2
+    const halfH = (stock.height * view.zoom) / 2
+    return { left: c.sx - halfW, right: c.sx + halfW, top: c.sy - halfH, bottom: c.sy + halfH }
+  }
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const sx = e.clientX - rect.left
@@ -155,6 +165,21 @@ export function DesignCanvas({ result }: Props) {
     }
 
     const hit = hitTest(world)
+    if (stock.enabled) {
+      const r = stockScreenRect()
+      const tol = 8
+      const inside = sx >= r.left && sx <= r.right && sy >= r.top && sy <= r.bottom
+      const nearBorder =
+        sx >= r.left - tol && sx <= r.right + tol && sy >= r.top - tol && sy <= r.bottom + tol && !inside
+      if (nearBorder || (!hit && inside)) {
+        drag.current.mode = 'move-stock'
+        drag.current.stockX = stock.x
+        drag.current.stockY = stock.y
+        setDragging(true)
+        e.currentTarget.setPointerCapture(e.pointerId)
+        return
+      }
+    }
     if (hit) {
       select(hit, e.shiftKey)
       const shape = shapes.find((s) => s.id === hit)
@@ -175,10 +200,17 @@ export function DesignCanvas({ result }: Props) {
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const state = drag.current
-    if (state.mode === 'none') return
     const rect = e.currentTarget.getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top
+    if (state.mode === 'none') {
+      if (stock.enabled) {
+        const r = stockScreenRect()
+        const inside = sx >= r.left && sx <= r.right && sy >= r.top && sy <= r.bottom
+        e.currentTarget.style.cursor = inside ? 'move' : ''
+      }
+      return
+    }
     const dx = sx - state.startX
     const dy = sy - state.startY
 
@@ -196,6 +228,14 @@ export function DesignCanvas({ result }: Props) {
         y = Math.round(y / snapStep) * snapStep
       }
       updateShape(state.shapeId, { x, y })
+    } else if (state.mode === 'move-stock') {
+      let x = state.stockX + dx / view.zoom
+      let y = state.stockY - dy / view.zoom
+      if (snap && snapStep > 0) {
+        x = Math.round(x / snapStep) * snapStep
+        y = Math.round(y / snapStep) * snapStep
+      }
+      setStock({ x, y })
     }
   }
 

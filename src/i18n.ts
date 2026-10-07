@@ -160,6 +160,8 @@ const EN: Record<string, string> = {
   'Centre Y (mm)': 'Center Y (mm)',
   'Centrer sur le dessin': 'Center on drawing',
   'Ajuster au dessin': 'Fit to drawing',
+  "Glissez le brut à la souris dans le plan pour le positionner sur le plateau machine (il correspond alors à l'endroit où vous posez la matière sur la CNC).":
+    'Drag the stock with the mouse on the plan to position it on the machine bed (it then matches where you place the material on the CNC).',
   'Usinage spécial': 'Special machining',
   'Tenons de maintien': 'Holding tabs',
   'Espacement (mm)': 'Spacing (mm)',

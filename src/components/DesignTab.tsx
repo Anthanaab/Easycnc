@@ -183,6 +183,7 @@ export function DesignTab() {
               {t('Ajuster au dessin')}
             </button>
           </div>
+          <p className="notes">{t('Glissez le brut à la souris dans le plan pour le positionner sur le plateau machine (il correspond alors à l\'endroit où vous posez la matière sur la CNC).')}</p>
         </section>
 
         <section className="panel">
