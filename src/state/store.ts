@@ -315,7 +315,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
     pushLog('info', tr('Palpage Z en cours…'))
     try {
-      await probeZ(client, get().probe, (key, params) => pushLog('info', tr(key, params)))
+      const machine = get().machines.find((m) => m.id === get().machineId)
+      const probe = { ...get().probe }
+      if (machine) probe.maxDepth = Math.max(probe.maxDepth, machine.area.z)
+      await probeZ(client, probe, (key, params) => pushLog('info', tr(key, params)))
     } catch (error) {
       pushLog('error', tr('Palpage echoue: {msg} (verifiez le cablage et $6, puis $X)', { msg: message(error) }))
     }
