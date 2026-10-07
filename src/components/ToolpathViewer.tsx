@@ -25,6 +25,7 @@ export function ToolpathViewer() {
   const refs = useRef<SceneRefs | null>(null)
   const toolpath = useStore((s) => s.toolpath)
   const status = useStore((s) => s.status)
+  const offsets = useStore((s) => s.offsets)
   const stockSetting = useCamStore((s) => s.stock)
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
 
@@ -160,14 +161,18 @@ export function ToolpathViewer() {
   useEffect(() => {
     const current = refs.current
     if (!current) return
-    const position = status?.mpos ?? status?.wpos
+    const mpos = status?.mpos
+    const wco = status?.wco ?? offsets.G54
+    const position =
+      status?.wpos ??
+      (mpos && wco ? { x: mpos.x - wco.x, y: mpos.y - wco.y, z: mpos.z - wco.z } : mpos)
     if (!position) {
       current.tool.visible = false
       return
     }
     current.tool.visible = true
     current.tool.position.set(position.x, position.y, position.z)
-  }, [status])
+  }, [status, offsets])
 
   const bounds = toolpath?.bounds
   const size = bounds

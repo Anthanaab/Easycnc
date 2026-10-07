@@ -182,6 +182,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       await client.connect(rate)
       pushLog('info', tr('Port ouvert a {baud} bauds', { baud: rate }))
+      void client.send('$#').catch(() => undefined)
     } catch (error) {
       pushLog('error', message(error))
     }
@@ -319,6 +320,7 @@ export const useStore = create<AppState>((set, get) => ({
       const probe = { ...get().probe }
       if (machine) probe.maxDepth = Math.max(probe.maxDepth, machine.area.z)
       await probeZ(client, probe, (key, params) => pushLog('info', tr(key, params)))
+      void client.send('$#').catch(() => undefined)
     } catch (error) {
       pushLog('error', tr('Palpage echoue: {msg} (verifiez le cablage et $6, puis $X)', { msg: message(error) }))
     }
