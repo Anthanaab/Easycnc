@@ -1,3 +1,5 @@
+const MAX_BUFFER = 64 * 1024
+
 export type LineHandler = (line: string) => void
 
 /**
@@ -80,6 +82,11 @@ export class SerialTransport {
   }
 
   private drain(): void {
+    // Securite : un flux sans fin de ligne (mauvais debit, bruit) ne doit pas
+    // faire grossir le tampon indefiniment.
+    if (this.buffer.length > MAX_BUFFER && this.buffer.indexOf('\n') < 0) {
+      this.buffer = this.buffer.slice(-MAX_BUFFER)
+    }
     let index: number
     while ((index = this.buffer.indexOf('\n')) >= 0) {
       const raw = this.buffer.slice(0, index)

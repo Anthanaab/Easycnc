@@ -536,6 +536,24 @@ const EN: Record<string, string> = {
     'Focus: the laser stays on while jogging ±0.5 mm (useful if your board cuts the laser when idle). Adjust the lens to the finest spot, then stop.',
   "Déplacez la grille à la souris sur le plan (Conception 2D) : sa position est utilisée pour le G-code. Laissez la gravure se terminer (les cases fortes sont à la fin).":
     'Move the grid with the mouse on the plan (2D Design): its position is used for the G-code. Let the burn finish (the strong cells are at the end).',
+  // Securite / flux
+  'Programme en cours : commande refusee (mettez en pause M0 ou arretez)': 'Program running: command refused (wait for an M0 pause or stop)',
+  'Jog {axis} : butee atteinte': 'Jog {axis}: travel limit reached',
+  "Programme en cours : arretez-le avant d'en charger un autre": 'Program running: stop it before loading another one',
+  'Machine non prete (etat {state}) : attendez Idle, ou deverrouillez ($X) / faites le homing':
+    'Machine not ready (state {state}): wait for Idle, or unlock ($X) / home',
+  'Ligne {n} trop longue pour GRBL ({max} caracteres max) : {line}': 'Line {n} too long for GRBL ({max} chars max): {line}',
+  'Pause programme (M0)': 'Program pause (M0)',
+  'Pause programme : {msg} — machine arrêtée, commandes manuelles autorisées. « Reprendre » pour continuer.':
+    'Program pause: {msg} — machine stopped, manual commands allowed. Press “Resume” to continue.',
+  'Erreur programme: {msg} — machine arrêtée (feed hold + reset)': 'Program error: {msg} — machine stopped (feed hold + reset)',
+  'Valeur invalide pour ${code}': 'Invalid value for ${code}',
+  "Machine non référencée : contrôle d'emprise approximatif (faites le homing pour un contrôle précis).":
+    'Machine not homed: approximate bounds check (home the machine for an accurate check).',
+  'machine arrêtée : jog / palpage autorisés, puis « Reprendre ».': 'machine stopped: jog / probing allowed, then “Resume”.',
+  'Machine non prête': 'Machine not ready',
+  'Machine non prête (attendez Idle)': 'Machine not ready (wait for Idle)',
+  'Écart de planéité {mm} mm : trop grand, vérifiez la carte et Z0': 'Flatness deviation {mm} mm: too large, check the board and Z0',
 }
 
 

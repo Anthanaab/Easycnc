@@ -24,8 +24,11 @@ const MAX_ARC_STEPS = 720
 
 // Codes G sans effet geometrique pour l'apercu 3D.
 const IGNORED_G_CODES = new Set<number>([
-  4, 10, 28, 30, 40, 43, 44, 49, 53, 54, 55, 56, 57, 58, 59, 80, 94, 95, 96, 97, 98, 99,
+  40, 43, 43.1, 44, 49, 54, 55, 56, 57, 58, 59, 61, 64, 80, 93, 94, 95, 96, 97, 98, 99,
 ])
+// Codes non modaux dont les mots X/Y/Z ne sont pas un deplacement en
+// coordonnees de travail : ils ne doivent pas fausser l'emprise du programme.
+const NON_MOTION_G_CODES = new Set<number>([4, 10, 28, 28.1, 30, 30.1, 92.1, 92.2, 92.3])
 
 function vec(x = 0, y = 0, z = 0): Vec3 {
   return { x, y, z }
@@ -173,10 +176,25 @@ export function parseGcode(source: string): Toolpath {
       else if (code === 91.1) state.arcAbsolute = false
       else if (code === 0 || code === 1 || code === 2 || code === 3) {
         state.motion = code as 0 | 1 | 2 | 3
-        bypassMotion = false
         continue
       } else if (code === 92) {
         applyG92(state, axisWords)
+        bypassMotion = true
+        continue
+      } else if (code === 53) {
+        // Coordonnees machine : position inconnue dans le repere de travail.
+        warnings.add('Mouvements G53 (coordonnees machine) non representes dans l\'apercu.')
+        bypassMotion = true
+        continue
+      } else if (code === 28 || code === 30) {
+        warnings.add(`G${code} (retour a une position memorisee) non represente dans l'apercu.`)
+        bypassMotion = true
+        continue
+      } else if (code >= 38.2 && code <= 38.5) {
+        warnings.add('Palpage G38.x dans le programme : profondeur reelle inconnue.')
+        bypassMotion = true
+        continue
+      } else if (NON_MOTION_G_CODES.has(code)) {
         bypassMotion = true
         continue
       } else if (IGNORED_G_CODES.has(code)) {

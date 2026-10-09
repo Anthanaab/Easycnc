@@ -6,11 +6,12 @@
   "description": "Pilotage web (Web Serial) d'une CNC sous GRBL",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vitest run && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:install": "playwright install chromium"
+    "test:install": "playwright install chromium",
+    "test": "vitest run"
   },
   "dependencies": {
     "clipper-lib": "^6.4.2",
@@ -30,6 +31,7 @@
     "@vitejs/plugin-react": "^4.3.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.8",
-    "vite-plugin-pwa": "^2.0.0"
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^2.1.9"
   }
 }

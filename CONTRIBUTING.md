@@ -28,11 +28,13 @@ par IP, il faut HTTPS (place un certificat dans `certs/key.pem` et
 | `npm run build` | typecheck + build de production (`dist/`) |
 | `npm run preview` | prévisualiser le build |
 | `npm run typecheck` | vérification TypeScript |
+| `npm test` | tests unitaires (Vitest, `src/__tests__/`) |
 | `npm run test:install` | installe le navigateur Playwright (une fois) |
 | `npm run test:e2e` | tests end-to-end |
 
-Avant toute PR, assure-toi que **`npm run typecheck`** et **`npm run build`**
-passent.
+Avant toute PR, assure-toi que **`npm run typecheck`**, **`npm test`** et
+**`npm run build`** passent. Toute modification du protocole GRBL, du streamer
+ou du post-processeur doit être couverte par un test.
 
 ## Organisation du code
 

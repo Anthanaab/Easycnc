@@ -144,39 +144,49 @@ export function deleteProject(name: string): void {
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(map))
 }
 
+function persist(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* stockage plein / indisponible : le projet reste applique en memoire */
+  }
+}
+
 export function applyProject(project: ProjectData): void {
-  const images: LaserImage[] = (project.images ?? []).map((img) => ({ ...img, data: new Uint8Array(img.data) }))
-  useCamStore.setState({
-    shapes: project.shapes ?? [],
-    images,
-    tabs: project.tabs,
-    surfacing: project.surfacing,
-    laser: project.laser,
-    selectedIds: [],
-  })
-  localStorage.setItem('design.shapes', JSON.stringify(project.shapes ?? []))
-  localStorage.setItem('design.tabs', JSON.stringify(project.tabs))
-  localStorage.setItem('design.surfacing', JSON.stringify(project.surfacing))
-  localStorage.setItem('design.laser', JSON.stringify(project.laser))
+  const cam = useCamStore.getState()
+  const images: LaserImage[] = (Array.isArray(project.images) ? project.images : []).map((img) => ({
+    ...img,
+    data: new Uint8Array(img.data ?? []),
+  }))
+  // Les champs absents (anciens projets, fichier edite a la main) gardent les valeurs courantes.
+  const tabs = { ...cam.tabs, ...(project.tabs ?? {}) }
+  const surfacing = { ...cam.surfacing, ...(project.surfacing ?? {}) }
+  const laser = { ...cam.laser, ...(project.laser ?? {}) }
+  const shapes = Array.isArray(project.shapes) ? project.shapes : []
+  useCamStore.setState({ shapes, images, tabs, surfacing, laser, selectedIds: [] })
+  persist('design.shapes', shapes)
+  persist('design.tabs', tabs)
+  persist('design.surfacing', surfacing)
+  persist('design.laser', laser)
 
   const main = useStore.getState()
-  const userMachines = project.userMachines ?? []
-  const userBits = project.userBits ?? []
-  useStore.setState({
-    userMachines,
-    userBits,
-    machines: [...MACHINES, ...userMachines],
-    bits: [...BITS, ...userBits],
-  })
-  localStorage.setItem('userMachines', JSON.stringify(userMachines))
-  localStorage.setItem('userBits', JSON.stringify(userBits))
+  const userMachines = Array.isArray(project.userMachines) ? project.userMachines : []
+  const userBits = Array.isArray(project.userBits) ? project.userBits : []
+  const machines = [...MACHINES, ...userMachines]
+  const bits = [...BITS, ...userBits]
+  useStore.setState({ userMachines, userBits, machines, bits })
+  persist('userMachines', userMachines)
+  persist('userBits', userBits)
 
-  main.setMachine(project.machineId)
-  main.setMaterial(project.materialId)
-  main.setBit(project.bitId)
-  main.setParams(project.params)
-  useStore.setState({ savedSettings: project.savedSettings ?? {} })
-  localStorage.setItem('savedSettings', JSON.stringify(project.savedSettings ?? {}))
+  const machineId = machines.some((m) => m.id === project.machineId) ? project.machineId : main.machineId
+  const bitId = bits.some((b) => b.id === project.bitId) ? project.bitId : bits.some((b) => b.id === main.bitId) ? main.bitId : bits[0].id
+  main.setMachine(machines.some((m) => m.id === machineId) ? machineId : machines[0].id)
+  if (typeof project.materialId === 'string') main.setMaterial(project.materialId)
+  main.setBit(bitId)
+  if (project.params && typeof project.params === 'object') main.setParams(project.params)
+  const savedSettings = project.savedSettings && typeof project.savedSettings === 'object' ? project.savedSettings : {}
+  useStore.setState({ savedSettings })
+  persist('savedSettings', savedSettings)
 }
 
 export function downloadProject(project: ProjectData): void {

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { checkLimits, estimateMinutes } from '../gcode/estimate'
+import { estimateMinutes } from '../gcode/estimate'
 import { useT } from '../i18n'
-import { useStore } from '../state/store'
+import { jobLimits, useStore } from '../state/store'
 
 export function FilePanel() {
   const connected = useStore((s) => s.connected)
@@ -19,11 +19,16 @@ export function FilePanel() {
   const settings = useStore((s) => s.settings)
   const params = useStore((s) => s.params)
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
+  const machines = useStore((s) => s.machines)
+  const machineId = useStore((s) => s.machineId)
+  const status = useStore((s) => s.status)
+  const homed = useStore((s) => s.homed)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
   const t = useT()
 
   const readFile = (file: File) => {
+    if (running || paused) return
     const reader = new FileReader()
     reader.onload = () => loadFile(file.name, String(reader.result ?? ''))
     reader.readAsText(file)
@@ -39,10 +44,13 @@ export function FilePanel() {
   const percent = stream.total ? Math.round((stream.sent / stream.total) * 100) : 0
   const running = stream.state === 'running'
   const paused = stream.state === 'paused'
+  const programPause = paused && stream.pauseReason === 'program'
+  const machineState = status?.state
+  const notReady = connected && machineState !== 'Idle' && machineState !== 'Check'
   const laserMismatch = jobType === 'laser' && settings[32] !== '1'
   const millMismatch = jobType === 'mill' && settings[32] === '1'
   const blocked = laserMismatch || millMismatch
-  const limits = toolpath && machine && toolpath.segments.length ? checkLimits(toolpath.bounds, machine.area) : null
+  const limits = jobLimits(toolpath, { machines, machineId, settings, status, homed })
   const estimate = toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid }) : null
   const timeText = estimate
     ? estimate.minutes >= 1
@@ -62,7 +70,7 @@ export function FilePanel() {
     >
       <div className="panel-head">
         <h2>{t('Programme')}</h2>
-        <button className="btn tiny" onClick={() => inputRef.current?.click()}>
+        <button className="btn tiny" disabled={running || paused} onClick={() => inputRef.current?.click()}>
           {t('Ouvrir…')}
         </button>
         <input
@@ -111,6 +119,14 @@ export function FilePanel() {
           {t('Hors zone de travail')} : {limits.messages.join(' ; ')}
         </p>
       )}
+      {limits && limits.ok && !homed && connected && (
+        <p className="notes">{t('Machine non référencée : contrôle d\'emprise approximatif (faites le homing pour un contrôle précis).')}</p>
+      )}
+      {programPause && (
+        <p className="warn notes">
+          ⏸ {stream.pauseMessage ?? t('Pause programme (M0)')} — {t('machine arrêtée : jog / palpage autorisés, puis « Reprendre ».')}
+        </p>
+      )}
 
       <div className="progress">
         <div className="progress-fill" style={{ width: `${percent}%` }} />
@@ -120,13 +136,18 @@ export function FilePanel() {
       </div>
 
       <label className="check">
-        <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+        <input type="checkbox" checked={dryRun} disabled={running || paused} onChange={(e) => setDryRun(e.target.checked)} />
         {t('Essai à blanc (Z rehaussé, broche coupée)')}
       </label>
 
       <div className="stream-controls">
         {!running && !paused && (
-          <button className="btn primary" disabled={!connected || !toolpath || blocked || (limits ? !limits.ok : false)} onClick={() => void startStream()}>
+          <button
+            className="btn primary"
+            disabled={!connected || !toolpath || blocked || notReady || (limits ? !limits.ok : false)}
+            title={notReady ? `${t('Machine non prête')} (${machineState ?? '?'})` : undefined}
+            onClick={() => void startStream()}
+          >
             ▶ {t('Démarrer')}
           </button>
         )}

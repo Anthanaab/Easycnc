@@ -104,7 +104,8 @@ export function SettingsPanel() {
   const savedCount = Object.keys(savedSettings[machineId] ?? {}).length
   const hasSettings = Object.keys(settings).length > 0
 
-  const setValue = (code: number, value: number) => void sendCommand(`$${code}=${value}`)
+  const setSetting = useStore((s) => s.setSetting)
+  const setValue = (code: number, value: number) => void setSetting(code, value)
 
   const renderRow = (row: SettingRow) => {
     const raw = settings[row.code]

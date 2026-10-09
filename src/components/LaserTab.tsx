@@ -6,7 +6,7 @@ import { shapeLoops } from '../cam/geometry'
 import { generateToolpath, type CamResult, type CutPath } from '../cam/toolpath'
 import type { Bounds, Shape } from '../cam/types'
 import { useT, useTf } from '../i18n'
-import { client, useStore } from '../state/store'
+import { client, machineBusyReason, useStore } from '../state/store'
 import { useUiStore } from '../state/uiStore'
 import { DesignCanvas } from './DesignCanvas'
 
@@ -233,9 +233,13 @@ export function LaserTab() {
       setMessage(t('Alarme active'))
       return
     }
-    const pos = status?.wpos ?? status?.mpos
-    if (!pos) {
-      setMessage(t('Position inconnue (connecte la machine)'))
+    const busy = machineBusyReason()
+    if (busy) {
+      setMessage(busy)
+      return
+    }
+    if (status?.state !== 'Idle') {
+      setMessage(t('Machine non prête (attendez Idle)'))
       return
     }
     const sMax = settings[30] !== undefined ? Number(settings[30]) : laser.power
@@ -245,13 +249,15 @@ export function LaserTab() {
 
     // Apres un homing, la tete peut etre collee a un fin de course : on recentre
     // le va-et-vient a l'interieur de la course machine pour ne pas y aller.
-    let cx = pos.x
-    const area = machine?.area
-    const mpos = status?.mpos
-    if (homed && area && area.x > d * 2) {
-      const machineX = typeof mpos?.x === 'number' ? mpos.x : cx
-      const safeMachineX = Math.min(Math.max(machineX, d), area.x - d)
-      cx += safeMachineX - machineX
+    // Espace machine GRBL : [-course, 0] par defaut, [0, course] sinon.
+    let shift = 0
+    const travel = Number(settings[130]) > 0 ? Number(settings[130]) : machine?.area.x
+    const machineX = status?.mpos?.x
+    if (homed && travel && travel > d * 8 && typeof machineX === 'number') {
+      const negative = machineX <= 0.5
+      const lo = negative ? -travel + d * 2 : d * 2
+      const hi = negative ? -d * 2 : travel - d * 2
+      shift = Math.min(Math.max(machineX, lo), hi) - machineX
     }
 
     focusStop.current = false
@@ -261,9 +267,11 @@ export function LaserTab() {
       await client.send('G21')
       await client.send('G90')
       await client.send(`M3 S${s}`)
-      let dir = 1
+      // Jogs relatifs : independants du repere de travail.
+      await client.send(`$J=G91 G21 X${(shift + d).toFixed(3)} F${feed}`)
+      let dir = -1
       while (!focusStop.current) {
-        await client.send(`$J=G90 G21 X${(cx + dir * d).toFixed(3)} F${feed}`)
+        await client.send(`$J=G91 G21 X${(dir * d * 2).toFixed(3)} F${feed}`)
         dir = -dir
       }
     } catch {
@@ -291,6 +299,11 @@ export function LaserTab() {
 
   const testLaser = async () => {
     if (!connected) return
+    const busy = machineBusyReason()
+    if (busy) {
+      setMessage(busy)
+      return
+    }
     const s = settings[30] !== undefined ? Number(settings[30]) : laser.power
     setMessage(t('Test laser : allumage + trait de 5 mm…'))
     await sendCommand('G21')

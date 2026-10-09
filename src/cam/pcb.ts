@@ -1,6 +1,6 @@
 import type { Hole } from './gerber'
 import { differenceLoops, offsetLoops, unionLoops } from './offset'
-import { applyTabs, type CutPath } from './toolpath'
+import { applyTabs, zLevels, type CutPath } from './toolpath'
 import type { Bounds, Point, TabsSettings } from './types'
 
 export interface IsolationOptions {
@@ -55,13 +55,15 @@ export function drillPaths(holes: Hole[], depth: number, slots: boolean): CutPat
   return paths
 }
 
-export function outlinePaths(outline: Point[][], depth: number, tabs: TabsSettings): CutPath[] {
+export function outlinePaths(outline: Point[][], depth: number, tabs: TabsSettings, doc?: number): CutPath[] {
   const paths: CutPath[] = []
   if (!outline.length) return paths
-  const z = -Math.abs(depth)
-  const tabZ = tabs.enabled ? z + tabs.height : null
+  const finalZ = -Math.abs(depth)
+  const tabZ = tabs.enabled ? finalZ + tabs.height : null
+  // Detourage en plusieurs passes (profondeur de passe doc) plutot qu'en une seule.
+  const levels = doc && doc > 0 ? zLevels(Math.abs(depth), doc) : [finalZ]
   for (const loop of outline) {
-    paths.push(applyTabs(loop, z, tabZ, tabs))
+    for (const z of levels) paths.push(applyTabs(loop, z, tabZ, tabs))
   }
   return paths
 }

@@ -24,6 +24,16 @@ export interface GrblEvents extends Record<string, unknown> {
 
 // Taille du buffer de reception GRBL (128 octets) moins 1 de marge.
 const RX_BUDGET = 127
+// Tampon de ligne GRBL (LINE_BUFFER_SIZE = 80) : au-dela, error:11. GRBL ignore
+// les espaces et les commentaires avant de remplir ce tampon.
+export const MAX_LINE_CHARS = 79
+// Delai max d'attente du message de bienvenue apres ouverture / reset.
+const BOOT_TIMEOUT_MS = 3000
+
+/** Longueur effective d'une ligne dans le tampon GRBL (sans espaces ni commentaires). */
+export function grblLineLength(line: string): number {
+  return line.replace(/\([^)]*\)/g, '').replace(/;.*$/, '').replace(/\s+/g, '').length
+}
 
 /**
  * Client GRBL implementant le protocole "character-counting" pour
@@ -38,6 +48,11 @@ export class GrblClient extends Emitter<GrblEvents> {
   private _connected = false
   private _baudRate = 115200
   private homing = false
+  // Faux tant que GRBL n'a pas (re)demarre : evite d'envoyer des lignes
+  // pendant le boot (reset DTR) ou apres un reset/alarme, ou elles seraient
+  // perdues et desynchroniseraient le comptage des "ok".
+  private ready = false
+  private readyTimer: number | null = null
 
   status: GrblStatus | null = null
   welcome: string | null = null
@@ -67,13 +82,24 @@ export class GrblClient extends Emitter<GrblEvents> {
     return this._baudRate
   }
 
+  /** Vrai quand GRBL a demarre et accepte des lignes. */
+  get isReady(): boolean {
+    return this._connected && this.ready
+  }
+
   async connect(baudRate = this._baudRate): Promise<void> {
+    if (this._connected) return
     this._baudRate = baudRate
     this.txCount = 0
     this.pending = []
     this.inFlight = []
+    this.welcome = null
+    this.status = null
     await this.transport.requestAndOpen(baudRate)
     this._connected = true
+    // La plupart des cartes GRBL redemarrent a l'ouverture du port (DTR) :
+    // on attend la banniere "Grbl x.y" (ou un premier rapport d'etat).
+    this.waitForBoot()
     this.emit('connected', undefined)
     this.startPolling()
   }
@@ -90,10 +116,41 @@ export class GrblClient extends Emitter<GrblEvents> {
     this._connected = false
     this.homed = false
     this.homing = false
+    this.ready = false
+    this.clearReadyTimer()
     this.stopPolling()
     this.clearQueue(new Error('Deconnecte'))
     this.status = null
+    // Deconnexion inattendue (cable arrache) : libere le port pour pouvoir
+    // se reconnecter sans recharger la page.
+    if (this.transport.isOpen) void this.transport.close()
     this.emit('disconnected', undefined)
+  }
+
+  private clearReadyTimer(): void {
+    if (this.readyTimer !== null) {
+      window.clearTimeout(this.readyTimer)
+      this.readyTimer = null
+    }
+  }
+
+  /** Bloque l'envoi jusqu'au (re)demarrage de GRBL, avec un delai de secours. */
+  private waitForBoot(timeoutMs = BOOT_TIMEOUT_MS): void {
+    this.ready = false
+    this.clearReadyTimer()
+    this.readyTimer = window.setTimeout(() => {
+      this.readyTimer = null
+      if (!this._connected || this.ready) return
+      // Certaines cartes ne redemarrent pas et n'envoient rien : on continue.
+      this.markReady()
+    }, timeoutMs)
+  }
+
+  private markReady(): void {
+    this.clearReadyTimer()
+    if (this.ready) return
+    this.ready = true
+    this.pump()
   }
 
   /**
@@ -104,9 +161,13 @@ export class GrblClient extends Emitter<GrblEvents> {
     const clean = line.replace(/[\r\n]/g, '').trim()
     if (!clean) return Promise.resolve()
     return new Promise<void>((resolve, reject) => {
+      if (!this._connected) {
+        reject(new Error('Non connecte'))
+        return
+      }
       const bytes = clean.length + 1
-      if (bytes > RX_BUDGET) {
-        reject(new Error(`Ligne trop longue pour GRBL (${bytes} octets)`))
+      if (bytes > RX_BUDGET || grblLineLength(clean) > MAX_LINE_CHARS) {
+        reject(new Error(`Ligne trop longue pour GRBL (${grblLineLength(clean)} caracteres) : ${clean.slice(0, 40)}…`))
         return
       }
       this.pending.push({ line: clean, bytes, resolve, reject })
@@ -116,6 +177,7 @@ export class GrblClient extends Emitter<GrblEvents> {
   }
 
   private pump(): void {
+    if (!this.ready || !this._connected) return
     while (this.pending.length) {
       const task = this.pending[0]
       if (this.txCount + task.bytes > RX_BUDGET) break
@@ -150,6 +212,13 @@ export class GrblClient extends Emitter<GrblEvents> {
     this.pump()
   }
 
+  private rejectInFlight(reason: Error): void {
+    const tasks = this.inFlight
+    this.inFlight = []
+    this.txCount = 0
+    for (const task of tasks) task.reject(reason)
+  }
+
   /** Vide la file d'attente (utile pour stop / reset). */
   clearQueue(reason: Error): void {
     const tasks = [...this.inFlight, ...this.pending]
@@ -171,13 +240,20 @@ export class GrblClient extends Emitter<GrblEvents> {
       return
     }
     if (line.startsWith('ALARM')) {
-      this.emit('alarm', line)
+      // GRBL fait un reset interne (tampon serie vide) puis renvoie sa banniere :
+      // on attend celle-ci avant de renvoyer quoi que ce soit.
+      this.homed = false
+      this.homing = false
+      this.waitForBoot(1500)
       this.clearQueue(new Error(line))
+      this.emit('alarm', line)
       return
     }
     if (line.startsWith('<')) {
       const status = parseStatus(line)
       if (status) {
+        // Un rapport d'etat prouve que GRBL tourne (cartes sans banniere).
+        if (!this.ready) this.markReady()
         if (status.state === 'Home') this.homing = true
         else if (this.homing && status.state === 'Idle') {
           this.homed = true
@@ -193,7 +269,20 @@ export class GrblClient extends Emitter<GrblEvents> {
       return
     }
     if (line.startsWith('Grbl ')) {
+      // Banniere = GRBL vient de (re)demarrer : ce qui etait dans son tampon
+      // est perdu. Redemarrage attendu (connexion, reset, alarme) : seules les
+      // lignes deja envoyees sont perdues, celles en attente sont pour la
+      // nouvelle session. Redemarrage inattendu (coupure, glitch) : tout est
+      // purge pour ne pas executer la suite d'un programme hors contexte.
       this.welcome = line
+      this.homed = false
+      this.homing = false
+      if (this.ready) {
+        this.clearQueue(new Error('GRBL a redemarre'))
+      } else {
+        this.rejectInFlight(new Error('GRBL a redemarre'))
+      }
+      this.markReady()
       this.emit('welcome', line)
       return
     }
@@ -229,9 +318,11 @@ export class GrblClient extends Emitter<GrblEvents> {
   }
 
   softReset(): void {
+    if (!this.transport.isOpen) return
     this.writeRealtime(0x18) // Ctrl-X
     this.homed = false
     this.homing = false
+    this.waitForBoot(2000)
     this.clearQueue(new Error('Reset'))
   }
 
@@ -282,7 +373,59 @@ export class GrblClient extends Emitter<GrblEvents> {
   }
 
   async home(): Promise<void> {
-    await this.send('$H')
+    this.homing = true
+    try {
+      // GRBL ne repond "ok" a $H qu'une fois le cycle termine avec succes.
+      await this.send('$H')
+      this.homed = true
+    } finally {
+      this.homing = false
+    }
+  }
+
+  /** Attend que toutes les lignes deja envoyees soient executees (planner vide). */
+  async sync(): Promise<void> {
+    await this.send('G4 P0')
+  }
+
+  /** Interroge l'etat modal ($G) et renvoie le contenu du rapport [GC:...]. */
+  async parserState(): Promise<string> {
+    let gc: string | null = null
+    const off = this.on('feedback', (feedback) => {
+      if (feedback.kind === 'parser' && feedback.data.GC !== undefined) gc = feedback.data.GC
+    })
+    try {
+      await this.send('$G')
+    } finally {
+      off()
+    }
+    if (gc === null) throw new Error('Etat modal ($G) non recu')
+    return gc
+  }
+
+  /** Attend un rapport d'etat verifiant le predicat (ou rejette apres timeout). */
+  waitForStatus(predicate: (status: GrblStatus) => boolean, timeoutMs: number): Promise<GrblStatus> {
+    if (this.status && predicate(this.status)) return Promise.resolve(this.status)
+    return new Promise<GrblStatus>((resolve, reject) => {
+      const off = this.on('status', (status) => {
+        if (!predicate(status)) return
+        cleanup()
+        resolve(status)
+      })
+      const offDisconnect = this.on('disconnected', () => {
+        cleanup()
+        reject(new Error('Deconnecte'))
+      })
+      const timer = window.setTimeout(() => {
+        cleanup()
+        reject(new Error('Delai depasse'))
+      }, timeoutMs)
+      const cleanup = () => {
+        off()
+        offDisconnect()
+        window.clearTimeout(timer)
+      }
+    })
   }
 
   async requestSettings(): Promise<void> {
@@ -291,7 +434,10 @@ export class GrblClient extends Emitter<GrblEvents> {
 
   /** Jog GRBL 1.1: $J=G91 G21 X.. Y.. Z.. F.. */
   async jog(axis: 'X' | 'Y' | 'Z', distance: number, feed: number): Promise<void> {
-    const line = `$J=G91 G21 ${axis}${distance.toFixed(3)} F${feed}`
+    if (!Number.isFinite(distance) || !Number.isFinite(feed) || feed <= 0) {
+      throw new Error('Jog : distance ou avance invalide')
+    }
+    const line = `$J=G91 G21 ${axis}${distance.toFixed(3)} F${Math.round(feed)}`
     await this.send(line)
   }
 
@@ -299,7 +445,8 @@ export class GrblClient extends Emitter<GrblEvents> {
   async setWorkZero(axes: Array<'X' | 'Y' | 'Z'>): Promise<void> {
     if (!axes.length) return
     const words = axes.map((axis) => `${axis}0`).join(' ')
-    await this.send(`G10 L20 P1 ${words}`)
+    // P0 = repere de travail actif (G54..G59), pas forcement G54.
+    await this.send(`G10 L20 P0 ${words}`)
   }
 }
 

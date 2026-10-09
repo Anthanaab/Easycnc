@@ -67,6 +67,17 @@ npm run preview
 ## Sécurité
 
 - Le démarrage est **bloqué** si le programme dépasse la **zone de travail** de la machine.
+  Machine référencée (`$H`), le contrôle se fait en **coordonnées machine** (origine de travail
+  et Z de sécurité compris, courses `$130-$132`) ; sinon, contrôle approximatif sur le plateau.
+- Démarrage seulement si GRBL est **Idle** ; lignes trop longues pour GRBL refusées avant envoi.
+- « Programme terminé » n'est annoncé qu'une fois les **mouvements réellement finis** (`G4 P0`).
+- Sur **erreur GRBL** en cours de programme, ou sur **Stop** : feed hold, attente de l'arrêt,
+  puis reset (la position est conservée). Le bouton **Reset** reste un arrêt immédiat.
+- Pendant un programme, les commandes manuelles (console, jog, palpage…) sont **refusées**,
+  sauf pendant une **pause M0** (changement d'outil) où la machine est à l'arrêt ; l'état modal
+  (unités, G90/G91, avance, broche) est restauré à la reprise.
+- Jog continu borné à la course machine et annulé si la fenêtre perd le focus.
+- Fermer la page pendant un programme demande confirmation.
 - Un programme **LASER** ne démarre que si `$32=1` ; un programme de **fraisage** refuse `$32=1`.
 - **Lunettes** obligatoires en laser, surveillance permanente, main sur l'arrêt d'urgence.
 - Les profils/paramètres fournis sont **indicatifs** : vérifiez-les sur votre machine.
@@ -75,8 +86,11 @@ npm run preview
 
 ```bash
 npm run typecheck
+npm test                # tests unitaires (Vitest) : protocole GRBL, streamer, FAO, G-code
 npm run test:e2e        # nécessite : npm run test:install (une fois)
 ```
+
+`npm run build` exécute aussi les tests unitaires.
 
 ## Pile technique
 

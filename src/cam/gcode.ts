@@ -6,6 +6,9 @@ export interface LaserGcodeOptions {
   focusZ?: number
 }
 
+// Temporisation de mise en vitesse de la broche avant la premiere plongee (s).
+const SPINUP_SECONDS = 3
+
 export interface GcodeOptions {
   safeZ: number
   feed: number
@@ -92,8 +95,16 @@ function millGcode(result: CamResult, options: GcodeOptions): string {
 
   preset(lines, units)
   lines.push(`G0 Z${num(options.safeZ)}`)
-  if (options.spindleMode === 'manual') lines.push(`S${Math.round(options.rpm)} M0`)
-  else lines.push(`M3 S${Math.round(options.rpm)}`)
+  const spindleOn = () => {
+    if (options.spindleMode === 'manual') {
+      lines.push(`S${Math.round(options.rpm)} M0 (Demarrer la broche a ${Math.round(options.rpm)} tr/min puis Reprendre)`)
+    } else {
+      lines.push(`M3 S${Math.round(options.rpm)}`)
+      // Ne jamais plonger avant que la broche soit a vitesse.
+      lines.push(`G4 P${SPINUP_SECONDS}`)
+    }
+  }
+  spindleOn()
   pushCustom(lines, options.preamble)
 
   let currentTool: string | null = null
@@ -114,10 +125,13 @@ function millGcode(result: CamResult, options: GcodeOptions): string {
         currentX = tx
         currentY = ty
       }
-      lines.push(`M0 (Changer l'outil : ${name})`)
-      if (options.toolChange?.reprobe) lines.push('M0 (Re-palper Z0 puis Cycle start)')
-      if (options.spindleMode === 'manual') lines.push(`S${Math.round(options.rpm)} M0`)
-      else lines.push(`M3 S${Math.round(options.rpm)}`)
+      const safeName = String(name).replace(/[()]/g, '')
+      lines.push(
+        options.toolChange?.reprobe
+          ? `M0 (Changer l'outil : ${safeName}, re-palper Z0 puis Reprendre)`
+          : `M0 (Changer l'outil : ${safeName} puis Reprendre)`,
+      )
+      spindleOn()
     }
     if (tid !== undefined) currentTool = tid
     if (currentZ !== options.safeZ) {
@@ -136,7 +150,9 @@ function millGcode(result: CamResult, options: GcodeOptions): string {
       currentZ = firstZ
     }
 
-    const circle = options.arcs && path.closed ? fitCircle(path.points) : null
+    // Arc uniquement si tout le cercle est a Z constant (sinon rampe/tenons perdus).
+    const flat = path.points.every((p) => (p.z ?? path.z) === firstZ)
+    const circle = options.arcs && path.closed && flat ? fitCircle(path.points) : null
     if (circle) {
       const cw = signedArea(path.points) < 0
       const i = circle.cx - first.x
@@ -184,6 +200,8 @@ function laserGcode(result: CamResult, options: GcodeOptions, laser: LaserGcodeO
   const lines: string[] = []
   preset(lines, units)
   lines.push('G54')
+  // Hauteur de focus (repere de travail) si elle est definie.
+  if (Number.isFinite(laser.focusZ) && laser.focusZ !== 0) lines.push(`G0 Z${num(laser.focusZ as number)}`)
   lines.push(`${laser.mode} S0`)
 
   let lastX: number | null = null

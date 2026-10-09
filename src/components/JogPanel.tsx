@@ -16,7 +16,9 @@ export function JogPanel() {
   const home = useStore((s) => s.home)
   const jogCancel = useStore((s) => s.jogCancel)
 
-  const disabled = !connected
+  // Pendant un programme (hors pause M0), le jog est interdit.
+  const streamBusy = useStore((s) => s.stream.state === 'running' || (s.stream.state === 'paused' && s.stream.pauseReason !== 'program'))
+  const disabled = !connected || streamBusy
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -61,6 +63,7 @@ export function JogPanel() {
     onPointerUp: () => stopJog(),
     onPointerLeave: () => stopJog(),
     onPointerCancel: () => stopJog(),
+    onLostPointerCapture: () => stopJog(),
   })
 
   return (

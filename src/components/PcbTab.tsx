@@ -26,7 +26,7 @@ import {
 import type { CutPath } from '../cam/toolpath'
 import type { Bounds, Point } from '../cam/types'
 import { useT, useTf } from '../i18n'
-import { client, useStore } from '../state/store'
+import { client, machineBusyReason, useStore } from '../state/store'
 import { useUiStore } from '../state/uiStore'
 import { probeGrid } from '../grbl/level'
 
@@ -77,6 +77,7 @@ export function PcbTab() {
   const params = useStore((s) => s.params)
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
   const connected = useStore((s) => s.connected)
+  const probeSettings = useStore((s) => s.probe)
   const loadFile = useStore((s) => s.loadFile)
   const setTab = useUiStore((s) => s.setTab)
 
@@ -144,7 +145,7 @@ export function PcbTab() {
   }, [derived.copper, toolRadius, isoGap, isoPasses, isoStepover, isoDepth])
 
   const drills = useMemo(() => drillPaths(derived.holes, drillDepth, false), [derived.holes, drillDepth])
-  const contours = useMemo<CutPath[]>(() => outlinePaths(derived.outline, outlineDepth, tabs), [derived.outline, outlineDepth, tabs])
+  const contours = useMemo<CutPath[]>(() => outlinePaths(derived.outline, outlineDepth, tabs, params.doc), [derived.outline, outlineDepth, tabs, params.doc])
   const clearing = useMemo<CutPath[]>(() => {
     if (!derived.outline.length || !derived.copper.length) return []
     return clearingPaths(derived.outline, derived.copper, {
@@ -202,6 +203,11 @@ export function PcbTab() {
 
   const runProbe = async () => {
     if (!derived.bounds) return
+    const busy = machineBusyReason()
+    if (busy) {
+      setProgress(busy)
+      return
+    }
     setProbing(true)
     setProgress(t('Palpage…'))
     try {
@@ -210,11 +216,23 @@ export function PcbTab() {
         derived.bounds,
         levelCols,
         levelRows,
-        { safeZ: params.safeZ, retract: 3, fast: 150, maxDepth: 5 },
+        {
+          safeZ: Math.max(params.safeZ, 1),
+          retract: Math.min(3, Math.max(params.safeZ, 1)),
+          fast: probeSettings.fast,
+          slow: probeSettings.feed,
+          // On part de Z securite : la course doit couvrir au moins Z0 + 3 mm.
+          maxDepth: Math.max(params.safeZ, 1) + 3,
+        },
         (done, total) => setProgress(tf('Palpage {done}/{total}', { done, total })),
       )
-      const max = Math.max(...heights)
-      const deltas = heights.map((h) => h - max)
+      // Ecart de chaque point par rapport au Z0 de travail courant (Z machine
+      // du Z0 = WCO.z). A defaut, reference = point le plus haut.
+      const wcoZ = useStore.getState().status?.wco?.z
+      const reference = typeof wcoZ === 'number' ? wcoZ : Math.max(...heights)
+      const deltas = heights.map((h) => h - reference)
+      const spread = Math.max(...deltas) - Math.min(...deltas)
+      if (spread > 1.5) throw new Error(tf('Écart de planéité {mm} mm : trop grand, vérifiez la carte et Z0', { mm: spread.toFixed(2) }))
       setLevel(makeLevelMap(derived.bounds, levelCols, levelRows, deltas))
       setUseLevel(true)
       setProgress(t('Nivellement prêt'))
