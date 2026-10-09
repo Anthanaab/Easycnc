@@ -27,6 +27,9 @@ const RX_BUDGET = 127
 // Tampon de ligne GRBL (LINE_BUFFER_SIZE = 80) : au-dela, error:11. GRBL ignore
 // les espaces et les commentaires avant de remplir ce tampon.
 export const MAX_LINE_CHARS = 79
+// Alarmes GRBL apres lesquelles la position machine reste valable :
+// limite logicielle (2), echecs de palpage (4, 5).
+const POSITION_KEPT_ALARMS = new Set([2, 4, 5])
 // Commandes qui modifient le decalage de travail (WCO).
 const WCO_CHANGE = /G\s*0*(?:10|92(?:\.\d)?|5[4-9]|43\.1|49)(?![0-9])/i
 // Delai max d'attente du message de bienvenue apres ouverture / reset.
@@ -50,11 +53,18 @@ export class GrblClient extends Emitter<GrblEvents> {
   private _connected = false
   private _baudRate = 115200
   private homing = false
+  // Alarme / reset qui conservent la position (ALARM:2/4/5, reset a l'arret) :
+  // la machine reste referencee apres le redemarrage.
+  private retainHomed = false
   // Faux tant que GRBL n'a pas (re)demarre : evite d'envoyer des lignes
   // pendant le boot (reset DTR) ou apres un reset/alarme, ou elles seraient
   // perdues et desynchroniseraient le comptage des "ok".
   private ready = false
   private readyTimer: number | null = null
+  // A la connexion, un rapport d'etat suffit a prouver que GRBL tourne (cartes
+  // sans banniere). Apres un reset/alarme, seule la banniere compte : un "?"
+  // peut etre repondu juste avant le redemarrage.
+  private statusMeansReady = false
 
   status: GrblStatus | null = null
   /** Vrai entre un changement d'origine (G10/G92/G5x/G43.1) et le rapport WCO suivant. */
@@ -104,6 +114,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     // La plupart des cartes GRBL redemarrent a l'ouverture du port (DTR) :
     // on attend la banniere "Grbl x.y" (ou un premier rapport d'etat).
     this.waitForBoot()
+    this.statusMeansReady = true
     this.emit('connected', undefined)
     this.startPolling()
   }
@@ -141,6 +152,7 @@ export class GrblClient extends Emitter<GrblEvents> {
   /** Bloque l'envoi jusqu'au (re)demarrage de GRBL, avec un delai de secours. */
   private waitForBoot(timeoutMs = BOOT_TIMEOUT_MS): void {
     this.ready = false
+    this.statusMeansReady = false
     this.clearReadyTimer()
     this.readyTimer = window.setTimeout(() => {
       this.readyTimer = null
@@ -249,7 +261,9 @@ export class GrblClient extends Emitter<GrblEvents> {
     if (line.startsWith('ALARM')) {
       // GRBL fait un reset interne (tampon serie vide) puis renvoie sa banniere :
       // on attend celle-ci avant de renvoyer quoi que ce soit.
-      this.homed = false
+      const code = Number(/ALARM:(\d+)/.exec(line)?.[1])
+      this.retainHomed = this.homed && POSITION_KEPT_ALARMS.has(code)
+      if (!this.retainHomed) this.homed = false
       this.homing = false
       this.waitForBoot(1500)
       this.clearQueue(new Error(line))
@@ -261,14 +275,16 @@ export class GrblClient extends Emitter<GrblEvents> {
       if (status) {
         if (status.wco) this.wcoStale = false
         // Un rapport d'etat prouve que GRBL tourne (cartes sans banniere).
-        if (!this.ready) this.markReady()
+        if (!this.ready && this.statusMeansReady) this.markReady()
         if (status.state === 'Home') this.homing = true
         else if (this.homing && status.state === 'Idle') {
           this.homed = true
           this.homing = false
         } else if (status.state === 'Alarm') {
-          this.homed = false
+          if (!this.retainHomed) this.homed = false
           this.homing = false
+        } else if (status.state === 'Idle') {
+          this.retainHomed = false
         }
         status.homed = this.homed
         this.status = status
@@ -283,11 +299,13 @@ export class GrblClient extends Emitter<GrblEvents> {
       // nouvelle session. Redemarrage inattendu (coupure, glitch) : tout est
       // purge pour ne pas executer la suite d'un programme hors contexte.
       this.welcome = line
-      this.homed = false
       this.homing = false
       if (this.ready) {
+        this.homed = false
+        this.retainHomed = false
         this.clearQueue(new Error('GRBL a redemarre'))
       } else {
+        if (!this.retainHomed) this.homed = false
         this.rejectInFlight(new Error('GRBL a redemarre'))
       }
       this.markReady()
@@ -327,8 +345,12 @@ export class GrblClient extends Emitter<GrblEvents> {
 
   softReset(): void {
     if (!this.transport.isOpen) return
+    // Reset a l'arret (Idle ou feed hold termine) : GRBL conserve la position.
+    const state = this.status?.state
+    const stopped = state === 'Idle' || (state === 'Hold' && this.status?.subState === '0')
+    this.retainHomed = this.homed && stopped
+    if (!this.retainHomed) this.homed = false
     this.writeRealtime(0x18) // Ctrl-X
-    this.homed = false
     this.homing = false
     this.waitForBoot(2000)
     this.clearQueue(new Error('Reset'))

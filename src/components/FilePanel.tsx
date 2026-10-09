@@ -25,6 +25,7 @@ export function FilePanel() {
   const homed = useStore((s) => s.homed)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [fromLine, setFromLine] = useState('')
   const t = useT()
 
   const readFile = (file: File) => {
@@ -140,13 +141,25 @@ export function FilePanel() {
         {t('Essai à blanc (Z rehaussé, broche coupée)')}
       </label>
 
+      {!running && !paused && toolpath && (
+        <label className="field">
+          <span>
+            {t('Reprendre à la ligne (vide = début)')}
+            {stream.sent > 0 && stream.sent < stream.total && (
+              <> — {t('arrêt vers la ligne')} ≤ {stream.sent}, {t('reprenez un peu avant')}</>
+            )}
+          </span>
+          <input type="number" min={1} max={stream.total} step={1} value={fromLine} placeholder="1" onChange={(e) => setFromLine(e.target.value)} />
+        </label>
+      )}
+
       <div className="stream-controls">
         {!running && !paused && (
           <button
             className="btn primary"
             disabled={!connected || !toolpath || blocked || notReady || (limits ? !limits.ok : false)}
             title={notReady ? `${t('Machine non prête')} (${machineState ?? '?'})` : undefined}
-            onClick={() => void startStream()}
+            onClick={() => void startStream(Number(fromLine) > 1 ? Math.round(Number(fromLine)) : undefined)}
           >
             ▶ {t('Démarrer')}
           </button>

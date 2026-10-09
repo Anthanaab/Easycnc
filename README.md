@@ -78,6 +78,9 @@ npm run preview
   (unités, G90/G91, avance, broche) est restauré à la reprise.
 - Jog continu borné à la course machine et annulé si la fenêtre perd le focus.
 - Fermer la page pendant un programme demande confirmation.
+- **Reprise à une ligne** (après coupure / arrêt) : état modal rejoué, Z de sécurité,
+  placement, broche relancée puis plongée. Refusée si ambiguë (G91, G92, G53, arc modal).
+- Import SVG nettoyé (scripts, gestionnaires d'événements, liens externes retirés).
 - Un programme **LASER** ne démarre que si `$32=1` ; un programme de **fraisage** refuse `$32=1`.
 - **Lunettes** obligatoires en laser, surveillance permanente, main sur l'arrêt d'urgence.
 - Les profils/paramètres fournis sont **indicatifs** : vérifiez-les sur votre machine.
@@ -90,7 +93,21 @@ npm test                # tests unitaires (Vitest) : protocole GRBL, streamer, F
 npm run test:e2e        # nécessite : npm run test:install (une fois)
 ```
 
-`npm run build` exécute aussi les tests unitaires.
+`npm run build` exécute aussi les tests unitaires. La CI GitHub Actions
+(`.github/workflows/ci.yml`) lance typecheck, tests, build et tests e2e à chaque push / PR.
+
+### Vérification sur la machine (après une mise à jour)
+
+À faire **en essai à blanc** (fraise au-dessus de la pièce, ou sans fraise) :
+
+1. Connexion : la console affiche la bannière `Grbl …` puis les réglages `$$`.
+2. Homing, puis palpage Z0 ; vérifier Z0 dans le DRO.
+3. Programme avec changement d'outil (2 fraises) : à la pause M0, jog et re-palpage
+   doivent marcher, « Reprendre » relance la broche puis continue.
+4. **Stop** en pleine coupe : la machine décélère puis s'arrête, broche coupée,
+   pas d'alarme ; la position reste valable.
+5. Reprise à une ligne après un Stop.
+6. Laser (`$32=1`) : focus à faible puissance, le point doit s'allumer.
 
 ## Pile technique
 

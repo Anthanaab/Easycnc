@@ -118,8 +118,10 @@ export function createShape(kind: ShapeKind, index: number): Shape {
     id: `s${Date.now()}${Math.round(Math.random() * 1000)}`,
     kind,
     name: `${labelOf(kind)} ${index}`,
-    x: 20,
-    y: 20,
+    // Centre de la forme : assez loin de l'origine pour que le contour
+    // exterieur (rayon de fraise compris) reste sur le plateau.
+    x: 40,
+    y: 35,
     rotation: 0,
     width: 40,
     height: 30,

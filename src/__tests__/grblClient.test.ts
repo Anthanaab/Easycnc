@@ -151,3 +151,46 @@ describe('GrblClient decalage de travail', () => {
     await client.disconnect()
   })
 })
+
+describe('GrblClient referencement', () => {
+  async function homedClient() {
+    const ctx = makeClient()
+    await ctx.client.connect()
+    ctx.receive('Grbl 1.1h')
+    const homing = ctx.client.home()
+    await tick()
+    ctx.receive('ok')
+    await homing
+    return ctx
+  }
+
+  it('conserve le referencement apres un echec de palpage (ALARM:5)', async () => {
+    const { client, receive } = await homedClient()
+    receive('ALARM:5')
+    receive('<Alarm|MPos:0.000,0.000,-10.000|FS:0,0>')
+    receive("Grbl 1.1h ['$' for help]")
+    expect(client.homed).toBe(true)
+    await client.disconnect()
+  })
+
+  it('perd le referencement apres un fin de course (ALARM:1)', async () => {
+    const { client, receive } = await homedClient()
+    receive('ALARM:1')
+    receive("Grbl 1.1h ['$' for help]")
+    expect(client.homed).toBe(false)
+    await client.disconnect()
+  })
+
+  it('reset a l\'arret : position conservee ; en mouvement : perdue', async () => {
+    const { client, receive } = await homedClient()
+    receive('<Idle|MPos:0.000,0.000,0.000|FS:0,0>')
+    client.softReset()
+    receive("Grbl 1.1h ['$' for help]")
+    expect(client.homed).toBe(true)
+    receive('<Run|MPos:1.000,0.000,0.000|FS:500,0>')
+    client.softReset()
+    receive("Grbl 1.1h ['$' for help]")
+    expect(client.homed).toBe(false)
+    await client.disconnect()
+  })
+})

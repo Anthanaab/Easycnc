@@ -30,3 +30,24 @@ test('projects modal opens', async ({ page }) => {
   await page.getByRole('button', { name: 'Projets' }).click()
   await expect(page.locator('.modal-head h2')).toContainText('Projets')
 })
+
+test('aucun onglet ne provoque d\'erreur JavaScript', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text())
+  })
+  await page.goto('/')
+  for (const name of ['Conception 2D', 'Vue 3D', 'Laser', 'PCB', 'Relief 3D', 'Réglages GRBL', 'Pilotage']) {
+    await page.getByRole('button', { name, exact: true }).click()
+  }
+  expect(errors).toEqual([])
+})
+
+test('demarrage impossible sans connexion', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Conception 2D' }).click()
+  await page.getByRole('button', { name: '▭ Rectangle' }).click()
+  await page.getByRole('button', { name: 'Charger dans Pilotage' }).click()
+  await expect(page.getByRole('button', { name: /Démarrer/ })).toBeDisabled()
+})

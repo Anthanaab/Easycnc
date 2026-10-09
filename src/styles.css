@@ -1293,10 +1293,14 @@ select:focus {
   .design-layout,
   .view3d-layout {
     grid-template-columns: 1fr;
+    /* Hauteur fixe (flex: 1) : sans max-content, les rangees auto se
+       compriment a 0 et les colonnes se chevauchent. */
+    grid-auto-rows: max-content;
     overflow: auto;
   }
   .column {
     overflow: visible;
+    min-height: auto;
   }
   .design-layout .left,
   .design-layout .right {

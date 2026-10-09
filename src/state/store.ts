@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { BITS } from '../data/bits'
-import { MACHINES, findMachine } from '../data/machines'
+import { MACHINES } from '../data/machines'
 import { MATERIALS, findMaterial } from '../data/materials'
 import { autoParams, type CutParams } from '../data/params'
 import type { Bit, MachineProfile, Material, ProbeSettings } from '../data/types'
@@ -9,32 +9,20 @@ import { probeZ } from '../grbl/probe'
 import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
-import { checkLimits, checkMachineLimits, type LimitCheck } from '../gcode/estimate'
+import { resumeProgram } from '../gcode/resume'
 import { parseGcode, type Toolpath } from '../gcode/parser'
+import { createLibraryActions } from './library'
+import { jobLimits, travelOf } from './limits'
+import { loadJSON, saveJSON } from './persist'
 import { GcodeStreamer, parsePause, programLines, splitComment, type PauseReason, type StreamState } from '../gcode/streamer'
 import { describeGrblCode } from '../grbl/codes'
+
+export { jobLimits } from './limits'
 
 let logId = 0
 const MAX_LOG = 800
 
 export const client = new GrblClient()
-
-function loadJSON<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-function saveJSON(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* ignore */
-  }
-}
 
 export interface StreamInfo {
   state: StreamState
@@ -115,7 +103,8 @@ export interface AppState {
   updateBit: (id: string, partial: Partial<Bit>) => void
   removeBit: (id: string) => void
   loadFile: (name: string, text: string, jobType?: 'mill' | 'laser') => void
-  startStream: () => Promise<void>
+  /** fromLine : reprise a cette ligne du programme (1 = debut). */
+  startStream: (fromLine?: number) => Promise<void>
   pauseStream: () => void
   resumeStream: () => void
   stopStream: () => void
@@ -148,44 +137,11 @@ function guard(): boolean {
   return reason === null
 }
 
-/** Courses GRBL ($130-$132) si connues, sinon celles du profil machine. */
-function travelOf(settings: Record<number, string>, area: { x: number; y: number; z: number }) {
-  const read = (key: number, fallback: number) => {
-    const value = Number(settings[key])
-    return Number.isFinite(value) && value > 0 ? value : fallback
-  }
-  return { x: read(130, area.x), y: read(131, area.y), z: read(132, area.z) }
-}
-
-/**
- * Controle d'emprise du programme. Si la machine est referencee et que
- * l'origine de travail est connue, le controle se fait en coordonnees machine
- * (precis, inclut le Z de securite) ; sinon, controle approximatif sur le plateau.
- */
-export function jobLimits(toolpath: Toolpath | null, state: Pick<AppState, 'machines' | 'machineId' | 'settings' | 'status' | 'homed'>): LimitCheck | null {
-  const machine = state.machines.find((m) => m.id === state.machineId)
-  if (!toolpath || !machine || !toolpath.segments.length) return null
-  const wco = state.status?.wco ?? lastWco
-  if (state.homed && wco) {
-    const machineCheck = checkMachineLimits(toolpath.bounds, wco, state.status?.mpos, travelOf(state.settings, machine.area))
-    const basic = checkLimits(toolpath.bounds, travelOf(state.settings, machine.area))
-    // Les controles "X/Y negatif" approximatifs n'ont plus de sens ici.
-    const sizeMessages = basic.messages.filter((m) => /^(Largeur|Hauteur|Profondeur)/.test(m))
-    const messages = [...sizeMessages, ...machineCheck.messages]
-    return { ...machineCheck, ok: messages.length === 0, messages }
-  }
-  return checkLimits(toolpath.bounds, machine.area)
-}
-
 // GRBL n'envoie WCO que periodiquement (tous les 10-30 rapports) : on garde le dernier.
 let lastWco: Vec3 | null = null
 
 // Jog continu en cours (annule si la fenetre perd le focus).
 let continuousJog = false
-
-function bitById(bits: Bit[], id: string): Bit {
-  return bits.find((b) => b.id === id) ?? bits[0]
-}
 
 const initialMachineId = loadJSON('machineId', 'lunyee-3018-pro-max')
 const initialMaterialId = loadJSON('materialId', 'plywood')
@@ -445,134 +401,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  setMachine: (id) => {
-    const machine = get().machines.find((m) => m.id === id) ?? get().machines[0]
-    const probe = { ...machine.probe, ...loadJSON<Partial<ProbeSettings>>('probe.' + id, {}) }
-    set({
-      machineId: id,
-      baudRate: machine.baud,
-      probe,
-      params: autoParams(machine, findMaterial(get().materialId), bitById(get().bits, get().bitId)),
-    })
-    saveJSON('machineId', id)
-  },
-
-  setMaterial: (id) => {
-    const machine = get().machines.find((m) => m.id === get().machineId) ?? get().machines[0]
-    set({
-      materialId: id,
-      params: autoParams(machine, findMaterial(id), bitById(get().bits, get().bitId)),
-    })
-    saveJSON('materialId', id)
-  },
-
-  setBit: (id) => {
-    const machine = get().machines.find((m) => m.id === get().machineId) ?? get().machines[0]
-    set({
-      bitId: id,
-      params: autoParams(machine, findMaterial(get().materialId), bitById(get().bits, id)),
-    })
-    saveJSON('bitId', id)
-  },
-
-  duplicateMachine: (id) => {
-    const source = get().machines.find((m) => m.id === id)
-    if (!source) return
-    const copy: MachineProfile = {
-      ...source,
-      id: `user-${Date.now()}`,
-      name: `${source.name} (copie)`,
-      builtin: false,
-    }
-    const userMachines = [...get().userMachines, copy]
-    saveJSON('userMachines', userMachines)
-    set({ userMachines, machines: [...MACHINES, ...userMachines] })
-    get().setMachine(copy.id)
-    pushLog('info', tr('Profil créé : {name}', { name: copy.name }))
-  },
-
-  updateMachine: (id, partial) => {
-    const userMachines = get().userMachines.map((m) => (m.id === id ? { ...m, ...partial } : m))
-    saveJSON('userMachines', userMachines)
-    const machines = [...MACHINES, ...userMachines]
-    const patch: Partial<AppState> = { userMachines, machines }
-    if (get().machineId === id) {
-      const current = machines.find((m) => m.id === id)
-      if (current) {
-        patch.baudRate = current.baud
-        patch.params = autoParams(current, findMaterial(get().materialId), bitById(get().bits, get().bitId))
-      }
-    }
-    set(patch)
-  },
-
-  removeMachine: (id) => {
-    const userMachines = get().userMachines.filter((m) => m.id !== id)
-    saveJSON('userMachines', userMachines)
-    const machines = [...MACHINES, ...userMachines]
-    set({ userMachines, machines })
-    if (get().machineId === id) get().setMachine(machines[0].id)
-  },
-
-  addBit: () => {
-    const bit: Bit = {
-      id: `bit-${Date.now()}`,
-      name: 'Ma fraise',
-      nameEn: 'My end mill',
-      type: 'flat',
-      diameter: 3.175,
-      flutes: 2,
-      cutLength: 12,
-      shank: 3.175,
-      geom: 'straight',
-      builtin: false,
-    }
-    const userBits = [...get().userBits, bit]
-    saveJSON('userBits', userBits)
-    set({ userBits, bits: [...BITS, ...userBits] })
-    get().setBit(bit.id)
-    pushLog('info', tr('Fraise créée : {name}', { name: bit.name }))
-  },
-
-  duplicateBit: (id) => {
-    const source = get().bits.find((b) => b.id === id)
-    if (!source) return
-    const copy: Bit = { ...source, id: `bit-${Date.now()}`, name: `${source.name} (copie)`, nameEn: `${source.nameEn} (copy)`, builtin: false }
-    const userBits = [...get().userBits, copy]
-    saveJSON('userBits', userBits)
-    set({ userBits, bits: [...BITS, ...userBits] })
-    get().setBit(copy.id)
-    pushLog('info', tr('Fraise créée : {name}', { name: copy.name }))
-  },
-
-  updateBit: (id, partial) => {
-    const userBits = get().userBits.map((b) => (b.id === id ? { ...b, ...partial } : b))
-    saveJSON('userBits', userBits)
-    const bits = [...BITS, ...userBits]
-    const patch: Partial<AppState> = { userBits, bits }
-    if (get().bitId === id) {
-      const machine = get().machines.find((m) => m.id === get().machineId) ?? get().machines[0]
-      patch.params = autoParams(machine, findMaterial(get().materialId), bitById(bits, id))
-    }
-    set(patch)
-  },
-
-  removeBit: (id) => {
-    const userBits = get().userBits.filter((b) => b.id !== id)
-    saveJSON('userBits', userBits)
-    const bits = [...BITS, ...userBits]
-    set({ userBits, bits })
-    if (get().bitId === id) get().setBit(bits[0].id)
-  },
-
-  setParams: (partial) => set((state) => ({ params: { ...state.params, ...partial } })),
-
-  setProbe: (partial) => {
-    const machineId = get().machineId
-    const probe = { ...get().probe, ...partial }
-    set({ probe })
-    saveJSON('probe.' + machineId, probe)
-  },
+  ...createLibraryActions(set, get, pushLog),
 
   setJogStep: (step) => set({ jogStep: step }),
   setJogFeed: (feed) => set({ jogFeed: feed }),
@@ -596,7 +425,7 @@ export const useStore = create<AppState>((set, get) => ({
     for (const warning of toolpath.warnings) pushLog('info', tr('Apercu: {msg}', { msg: warning }))
   },
 
-  startStream: async () => {
+  startStream: async (fromLine) => {
     const { connected, dryRun, rawGcode, params, jobType, settings } = get()
     if (!connected) {
       pushLog('error', tr('Non connecte'))
@@ -621,7 +450,16 @@ export const useStore = create<AppState>((set, get) => ({
         return
       }
     }
-    const lines = dryRun ? raiseZ(programLines(rawGcode), params.safeZ) : programLines(rawGcode)
+    let lines = dryRun ? raiseZ(programLines(rawGcode), params.safeZ) : programLines(rawGcode)
+    if (fromLine && fromLine > 1) {
+      try {
+        lines = resumeProgram(lines, fromLine - 1, { safeZ: params.safeZ, plunge: params.plunge }).lines
+      } catch (error) {
+        pushLog('error', message(error))
+        return
+      }
+      pushLog('info', tr('Reprise à la ligne {n} : Z sécurité, placement, broche, plongée', { n: fromLine }))
+    }
     const invalid = lines.findIndex((line) => /nan|infinity/i.test(splitComment(line).code))
     if (invalid >= 0) {
       pushLog('error', tr('Ligne {n} invalide (valeur non numérique) : {line}', { n: invalid + 1, line: lines[invalid].slice(0, 60) }))
