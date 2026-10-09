@@ -1,8 +1,12 @@
 import type { Toolpath } from './parser'
 
 export interface EstimateOptions {
+  /** Avance par defaut si le programme n'en donne pas (mm/min). */
   feed: number
+  /** Vitesse des deplacements rapides G0 (mm/min). */
   rapid: number
+  /** Acceleration (mm/s^2), ex. min($120, $121). */
+  accel?: number
 }
 
 export interface Estimate {
@@ -11,22 +15,69 @@ export interface Estimate {
   minutes: number
 }
 
-/** Estime la duree d'usinage a partir du parcours (coupe + rapides). */
+// Changement de direction au-dela duquel on considere un arret (rad).
+const CORNER = (35 * Math.PI) / 180
+
+/** Duree (s) d'un trajet de longueur L partant et finissant a l'arret (profil trapeze). */
+function trapezoid(length: number, speed: number, accel: number): number {
+  if (length <= 0 || speed <= 0) return 0
+  const rampDistance = (speed * speed) / accel
+  if (length >= rampDistance) return length / speed + speed / accel
+  return 2 * Math.sqrt(length / accel)
+}
+
+/**
+ * Estime la duree d'usinage : avance programmee de chaque segment, rapides,
+ * et acceleration (les suites de segments quasi alignes forment un seul trajet
+ * continu ; un angle vif impose un arret).
+ */
 export function estimateMinutes(toolpath: Toolpath, options: EstimateOptions): Estimate {
+  const accel = options.accel && options.accel > 0 ? options.accel : 500
+  const defaultFeed = Math.max(options.feed, 1)
+  const rapid = Math.max(options.rapid, 1)
   let cutLength = 0
   let rapidLength = 0
+  let seconds = 0
+
+  let chainLength = 0
+  let chainTime = 0 // a vitesse constante
+  let chainSpeed = 0 // vitesse max du trajet (mm/s)
+  let lastDir: { x: number; y: number; z: number } | null = null
+  let lastRapid: boolean | null = null
+
+  const closeChain = () => {
+    if (chainLength > 0) {
+      // Temps a vitesse constante + penalite d'acceleration/deceleration.
+      seconds += chainTime + (trapezoid(chainLength, chainSpeed, accel) - chainLength / chainSpeed)
+    }
+    chainLength = 0
+    chainTime = 0
+    chainSpeed = 0
+  }
+
   for (const segment of toolpath.segments) {
     const dx = segment.to.x - segment.from.x
     const dy = segment.to.y - segment.from.y
     const dz = segment.to.z - segment.from.z
     const length = Math.hypot(dx, dy, dz)
+    if (length < 1e-9) continue
     if (segment.rapid) rapidLength += length
     else cutLength += length
+    const speed = (segment.rapid ? rapid : segment.feed && segment.feed > 0 ? segment.feed : defaultFeed) / 60
+    const dir = { x: dx / length, y: dy / length, z: dz / length }
+    const continuous =
+      lastDir !== null &&
+      lastRapid === segment.rapid &&
+      Math.acos(Math.max(-1, Math.min(1, dir.x * lastDir.x + dir.y * lastDir.y + dir.z * lastDir.z))) < CORNER
+    if (!continuous) closeChain()
+    chainLength += length
+    chainTime += length / speed
+    chainSpeed = Math.max(chainSpeed, speed)
+    lastDir = dir
+    lastRapid = segment.rapid
   }
-  const feed = Math.max(options.feed, 1)
-  const rapid = Math.max(options.rapid, 1)
-  const minutes = cutLength / feed + rapidLength / rapid
-  return { cutLength, rapidLength, minutes }
+  closeChain()
+  return { cutLength, rapidLength, minutes: seconds / 60 }
 }
 
 export interface LimitCheck {

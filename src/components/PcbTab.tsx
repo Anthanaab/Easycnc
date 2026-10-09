@@ -19,6 +19,7 @@ import {
   isolationPaths,
   makeLevelMap,
   mirrorX,
+  boardRegion,
   outlinePaths,
   translatePaths,
   type LevelMap,
@@ -114,11 +115,11 @@ export function PcbTab() {
     let copper = combineCopper(raw)
     let outline = outlineLayers.flat()
     if (!copper.length && !outline.length) {
-      return { copper: [] as Point[][], outline: [] as Point[][], holes, bounds: null as Bounds | null }
+      return { copper: [] as Point[][], outline: [] as Point[][], board: [] as Point[][], holes, bounds: null as Bounds | null }
     }
     const boardPoints = [...copper.flat(), ...outline.flat(), ...holes.map((h) => ({ x: h.x, y: h.y }))]
     const bbox = boundsOf(boardPoints)
-    if (!bbox) return { copper: [] as Point[][], outline: [] as Point[][], holes, bounds: null as Bounds | null }
+    if (!bbox) return { copper: [] as Point[][], outline: [] as Point[][], board: [] as Point[][], holes, bounds: null as Bounds | null }
 
     if (mirrorBottom && bottomLayers.length) {
       const mirrored = bottomLayers.flatMap((layer) => mirrorX(layer, bbox))
@@ -130,7 +131,7 @@ export function PcbTab() {
     outline = outline.length ? translatePaths(outline, dx, dy) : rectangle(boundsOf(copper.flat())!, 0)
     const movedHoles = holes.map((h) => ({ ...h, x: h.x + dx, y: h.y + dy }))
     const bounds = boundsOf([...copper.flat(), ...outline.flat()])
-    return { copper, outline, holes: movedHoles, bounds }
+    return { copper, outline, board: boardRegion(outline), holes: movedHoles, bounds }
   }, [entries, mirrorBottom, margin])
 
   const isolation = useMemo<CutPath[]>(() => {
@@ -145,22 +146,28 @@ export function PcbTab() {
   }, [derived.copper, toolRadius, isoGap, isoPasses, isoStepover, isoDepth])
 
   const drills = useMemo(() => drillPaths(derived.holes, drillDepth, false), [derived.holes, drillDepth])
-  const contours = useMemo<CutPath[]>(() => outlinePaths(derived.outline, outlineDepth, tabs, params.doc), [derived.outline, outlineDepth, tabs, params.doc])
+  const contours = useMemo<CutPath[]>(() => outlinePaths(derived.board, outlineDepth, tabs, params.doc, toolRadius), [derived.board, outlineDepth, tabs, params.doc, toolRadius])
   const clearing = useMemo<CutPath[]>(() => {
-    if (!derived.outline.length || !derived.copper.length) return []
-    return clearingPaths(derived.outline, derived.copper, {
+    if (!derived.board.length || !derived.copper.length) return []
+    return clearingPaths(derived.board, derived.copper, {
       toolRadius,
       clearance,
       stepover: clearingStepover,
       depth: isoDepth,
     })
-  }, [derived.outline, derived.copper, toolRadius, clearance, clearingStepover, isoDepth])
+  }, [derived.board, derived.copper, toolRadius, clearance, clearingStepover, isoDepth])
 
-  const leveledIsolation = useMemo(() => {
-    const copy = isolation.map((p) => ({ ...p, points: p.points.map((pt) => ({ ...pt })) }))
-    if (useLevel && level) applyLeveling(copy, level)
+  // Nivellement : isolation, degagement et percage (passes peu profondes ou
+  // qui doivent traverser la carte). Le detourage traverse : inutile.
+  const leveled = (paths: CutPath[]): CutPath[] => {
+    if (!useLevel || !level) return paths
+    const copy = paths.map((p) => ({ ...p, points: p.points.map((pt) => ({ ...pt })) }))
+    applyLeveling(copy, level)
     return copy
-  }, [isolation, useLevel, level])
+  }
+  const leveledIsolation = useMemo(() => leveled(isolation), [isolation, useLevel, level])
+  const leveledClearing = useMemo(() => leveled(clearing), [clearing, useLevel, level])
+  const leveledDrills = useMemo(() => leveled(drills), [drills, useLevel, level])
 
   const millOptions = {
     safeZ: params.safeZ,
@@ -322,7 +329,7 @@ export function PcbTab() {
             <span>{contours.length} {t('segments')}</span>
           </div>
           <div className="two-grid">
-            <button className="btn" disabled={!drills.length} onClick={() => load('percage.nc', drills)}>
+            <button className="btn" disabled={!drills.length} onClick={() => load('percage.nc', leveledDrills)}>
               {t('Perçage')}
             </button>
             <button className="btn" disabled={!contours.length} onClick={() => load('detourage.nc', contours)}>
@@ -335,7 +342,7 @@ export function PcbTab() {
             <NumberField label={t('Écartement (mm)')} value={clearance} step={0.05} onChange={setClearance} />
             <NumberField label={t('Recouvrement (mm)')} value={clearingStepover} step={0.05} onChange={setClearingStepover} />
           </div>
-          <button className="btn" style={{ width: '100%' }} disabled={!clearing.length} onClick={() => load('degage.nc', clearing)}>
+          <button className="btn" style={{ width: '100%' }} disabled={!clearing.length} onClick={() => load('degage.nc', leveledClearing)}>
             {t('Dégagement → Pilotage')} ({clearing.length} {t('parcours')})
           </button>
         </section>
@@ -351,7 +358,7 @@ export function PcbTab() {
           </button>
           <label className="check">
             <input type="checkbox" checked={useLevel} disabled={!level} onChange={(e) => setUseLevel(e.target.checked)} />
-            {t('Appliquer au G-code d\'isolation')}
+            {t('Appliquer (isolation, dégagement, perçage)')}
           </label>
           {progress && <p className="notes">{progress}</p>}
         </section>

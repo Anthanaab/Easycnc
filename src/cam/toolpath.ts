@@ -235,7 +235,9 @@ function vcarveShape(
   }
   const norm = normalizeLoops(loops)
   if (!norm.length) return
-  const step = Math.max(params.stepover, 0.2)
+  const step = Math.max(positive(params.stepover, 0.2), 0.2)
+  // 1) Anneaux successifs vers l'interieur, profondeur selon l'angle de la fraise.
+  const rings: Array<{ loop: Point[]; depth: number }> = []
   let k = 0
   let reachedCap = false
   while (k < 1000) {
@@ -243,7 +245,7 @@ function vcarveShape(
     const ring = offsetLoops(norm, -dist)
     if (!ring.length) break
     const depth = Math.min(cap, dist / tanHalf)
-    for (const loop of ring) paths.push({ points: loop, closed: true, z: -depth })
+    for (const loop of ring) rings.push({ loop, depth })
     k++
     if (depth >= cap - 1e-6) {
       reachedCap = true
@@ -251,13 +253,25 @@ function vcarveShape(
     }
   }
   if (reachedCap) {
+    // Fond plat a la profondeur max : on vide l'interieur.
     let dist = k * step + step * 0.5
     for (let g = 0; g < 1000; g++) {
       const ring = offsetLoops(norm, -dist)
       if (!ring.length) break
-      for (const loop of ring) paths.push({ points: loop, closed: true, z: -cap })
+      for (const loop of ring) rings.push({ loop, depth: cap })
       dist += step
     }
+  }
+  // 2) Descente par paliers (passe doc) : jamais plus d'une passe de matiere a la fois.
+  const levels = zLevels(cap, positive(params.doc, cap))
+  let previous = 0
+  for (const level of levels) {
+    const levelDepth = -level
+    for (const { loop, depth } of rings) {
+      if (depth <= previous + 1e-6) continue
+      paths.push({ points: loop, closed: true, z: -Math.min(depth, levelDepth) })
+    }
+    previous = levelDepth
   }
 }
 
@@ -308,9 +322,13 @@ function optimizePaths(paths: CutPath[]): CutPath[] {
     let bestIndex = -1
     let bestDist = Infinity
     let reverse = false
+    // On ne choisit que parmi les passes du niveau le moins profond restant :
+    // jamais une passe profonde avant la passe moins profonde voisine.
+    let shallowest = -Infinity
+    for (const path of remaining) if (path.points.length) shallowest = Math.max(shallowest, path.z)
     for (let i = 0; i < remaining.length; i++) {
       const path = remaining[i]
-      if (!path.points.length) continue
+      if (!path.points.length || path.z < shallowest - 1e-6) continue
       const start = path.points[0]
       const end = path.points[path.points.length - 1]
       const d1 = Math.hypot(start.x - cx, start.y - cy)

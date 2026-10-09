@@ -11,7 +11,7 @@ import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
 import { checkLimits, checkMachineLimits, type LimitCheck } from '../gcode/estimate'
 import { parseGcode, type Toolpath } from '../gcode/parser'
-import { GcodeStreamer, parsePause, programLines, type PauseReason, type StreamState } from '../gcode/streamer'
+import { GcodeStreamer, parsePause, programLines, splitComment, type PauseReason, type StreamState } from '../gcode/streamer'
 import { describeGrblCode } from '../grbl/codes'
 
 let logId = 0
@@ -612,7 +612,21 @@ export const useStore = create<AppState>((set, get) => ({
       pushLog('error', tr('Machine non prete (etat {state}) : attendez Idle, ou deverrouillez ($X) / faites le homing', { state: machineState ?? '?' }))
       return
     }
+    if (client.wcoStale) {
+      // Origine tout juste modifiee : on attend le nouveau WCO avant de controler l'emprise.
+      try {
+        await client.waitForStatus((s) => s.wco !== undefined, 2000)
+      } catch {
+        pushLog('error', tr('Décalage de travail non confirmé par GRBL : réessayez'))
+        return
+      }
+    }
     const lines = dryRun ? raiseZ(programLines(rawGcode), params.safeZ) : programLines(rawGcode)
+    const invalid = lines.findIndex((line) => /nan|infinity/i.test(splitComment(line).code))
+    if (invalid >= 0) {
+      pushLog('error', tr('Ligne {n} invalide (valeur non numérique) : {line}', { n: invalid + 1, line: lines[invalid].slice(0, 60) }))
+      return
+    }
     const tooLong = lines.findIndex((line) => !parsePause(line) && grblLineLength(line) > MAX_LINE_CHARS)
     if (tooLong >= 0) {
       pushLog('error', tr('Ligne {n} trop longue pour GRBL ({max} caracteres max) : {line}', { n: tooLong + 1, max: MAX_LINE_CHARS, line: lines[tooLong].slice(0, 60) }))

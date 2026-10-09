@@ -101,12 +101,35 @@ function simplify(points: Point[], tolerance: number): Point[] {
   return points.filter((_, i) => keep[i])
 }
 
+// Elements actifs ou chargeant des ressources : inutiles pour la geometrie,
+// dangereux une fois inseres dans la page (scripts, gestionnaires d'evenements).
+const UNSAFE_ELEMENTS = 'script,foreignObject,iframe,object,embed,image,animate,animateMotion,animateTransform,set,audio,video,a,style,link,meta'
+
+/**
+ * Neutralise un SVG non fiable avant de l'inserer dans le DOM : retire les
+ * elements actifs, les attributs on*, et toute reference externe / javascript:.
+ */
+export function sanitizeSvg(root: Element): void {
+  root.querySelectorAll(UNSAFE_ELEMENTS).forEach((el) => el.remove())
+  const all = [root, ...Array.from(root.querySelectorAll('*'))]
+  for (const el of all) {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase()
+      const value = attr.value.trim().toLowerCase()
+      if (name.startsWith('on')) el.removeAttribute(attr.name)
+      else if ((name === 'href' || name.endsWith(':href')) && !value.startsWith('#')) el.removeAttribute(attr.name)
+      else if (/url\(\s*['"]?\s*(?!#)/.test(value) || value.includes('javascript:')) el.removeAttribute(attr.name)
+    }
+  }
+}
+
 export function importSvg(text: string): SvgImportResult {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
   const root = doc.documentElement
   if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) {
     throw new Error('Fichier SVG invalide.')
   }
+  sanitizeSvg(root)
   const live = document.importNode(root, true) as unknown as SVGSVGElement
   const viewBox = live.viewBox && live.viewBox.baseVal
   const w = live.getAttribute('width')

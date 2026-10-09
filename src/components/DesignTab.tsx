@@ -58,7 +58,7 @@ export function DesignTab() {
   }
   const resolveTool = (shape: { bitId?: string }) => {
     const b = toolOf(shape.bitId)
-    return { id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax }
+    return { id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax, cutLength: b.cutLength }
   }
   const toolNames = Object.fromEntries(bits.map((b) => [b.id, loc(b.name, b.nameEn)]))
 

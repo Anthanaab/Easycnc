@@ -266,6 +266,9 @@ export function LaserTab() {
     try {
       await client.send('G21')
       await client.send('G90')
+      // Doc GRBL (laser_mode) : un jog n'allume le laser que si le mode de
+      // mouvement modal est G1 (en G0, le laser est toujours coupe).
+      await client.send(`G1 F${feed}`)
       await client.send(`M3 S${s}`)
       // Jogs relatifs : independants du repere de travail.
       await client.send(`$J=G91 G21 X${(shift + d).toFixed(3)} F${feed}`)

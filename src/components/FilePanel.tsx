@@ -51,7 +51,7 @@ export function FilePanel() {
   const millMismatch = jobType === 'mill' && settings[32] === '1'
   const blocked = laserMismatch || millMismatch
   const limits = jobLimits(toolpath, { machines, machineId, settings, status, homed })
-  const estimate = toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid }) : null
+  const estimate = toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid, accel: Math.min(Number(settings[120]) || 500, Number(settings[121]) || 500) }) : null
   const timeText = estimate
     ? estimate.minutes >= 1
       ? `${estimate.minutes.toFixed(1)} min`

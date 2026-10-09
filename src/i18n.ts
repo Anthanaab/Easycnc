@@ -552,6 +552,9 @@ const EN: Record<string, string> = {
     'Machine not homed: approximate bounds check (home the machine for an accurate check).',
   'machine arrêtée : jog / palpage autorisés, puis « Reprendre ».': 'machine stopped: jog / probing allowed, then “Resume”.',
   'Machine non prête': 'Machine not ready',
+  'Appliquer (isolation, dégagement, perçage)': 'Apply (isolation, clearing, drilling)',
+  'Ligne {n} invalide (valeur non numérique) : {line}': 'Line {n} invalid (non-numeric value): {line}',
+  'Décalage de travail non confirmé par GRBL : réessayez': 'Work offset not confirmed by GRBL: try again',
   'Machine non prête (attendez Idle)': 'Machine not ready (wait for Idle)',
   'Écart de planéité {mm} mm : trop grand, vérifiez la carte et Z0': 'Flatness deviation {mm} mm: too large, check the board and Z0',
 }

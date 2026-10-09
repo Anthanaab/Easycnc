@@ -133,3 +133,21 @@ describe('GrblClient redemarrage inattendu', () => {
     await client.disconnect()
   })
 })
+
+describe('GrblClient decalage de travail', () => {
+  it('WCO perime apres G10 jusqu\'au rapport suivant', async () => {
+    const { client, receive } = makeClient()
+    await client.connect()
+    receive('Grbl 1.1h')
+    const zero = client.send('G10 L20 P0 Z0')
+    await tick()
+    receive('ok')
+    await zero
+    expect(client.wcoStale).toBe(true)
+    receive('<Idle|MPos:0.000,0.000,-5.000|FS:0,0>')
+    expect(client.wcoStale).toBe(true)
+    receive('<Idle|MPos:0.000,0.000,-5.000|FS:0,0|WCO:0.000,0.000,-5.000>')
+    expect(client.wcoStale).toBe(false)
+    await client.disconnect()
+  })
+})

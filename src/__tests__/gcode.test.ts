@@ -125,3 +125,22 @@ describe('protocole GRBL', () => {
     expect(parseFeedback('[PRB:0.000,0.000,0.000:0]')).toMatchObject({ ok: false })
   })
 })
+
+import { estimateMinutes } from '../gcode/estimate'
+
+describe('estimateMinutes', () => {
+  it('utilise l\'avance du programme et ajoute les accelerations', () => {
+    const tp = parseGcode('G1 X100 F600\n')
+    const noAccel = estimateMinutes(tp, { feed: 1, rapid: 1000, accel: 1e9 })
+    expect(noAccel.minutes).toBeCloseTo(100 / 600, 3)
+    const withAccel = estimateMinutes(tp, { feed: 1, rapid: 1000, accel: 100 })
+    expect(withAccel.minutes).toBeGreaterThan(noAccel.minutes)
+  })
+
+  it('un cercle fin en petits segments reste un trajet continu', () => {
+    const lines = Array.from({ length: 360 }, (_, i) => `G1 X${(10 * Math.cos((i * Math.PI) / 180)).toFixed(3)} Y${(10 * Math.sin((i * Math.PI) / 180)).toFixed(3)}`)
+    const tp = parseGcode(`G0 X10 Y0\nG1 F600\n${lines.join('\n')}`)
+    const estimate = estimateMinutes(tp, { feed: 600, rapid: 1000, accel: 500 })
+    expect(estimate.minutes * 60).toBeLessThan(((2 * Math.PI * 10) / 10) * 1.2 + 2)
+  })
+})

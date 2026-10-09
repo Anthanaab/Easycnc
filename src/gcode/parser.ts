@@ -4,6 +4,8 @@ export interface Segment {
   from: Vec3
   to: Vec3
   rapid: boolean
+  /** Avance programmee (mm/min) ; 0 si inconnue. */
+  feed?: number
 }
 
 export interface Bounds {
@@ -109,7 +111,7 @@ export function parseGcode(source: string): Toolpath {
   }
 
   const pushSegment = (from: Vec3, to: Vec3, rapid: boolean) => {
-    segments.push({ from: clone(from), to: clone(to), rapid })
+    segments.push({ from: clone(from), to: clone(to), rapid, feed: rapid ? undefined : state.feed * state.scale })
     track(to)
   }
 

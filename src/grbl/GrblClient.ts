@@ -27,6 +27,8 @@ const RX_BUDGET = 127
 // Tampon de ligne GRBL (LINE_BUFFER_SIZE = 80) : au-dela, error:11. GRBL ignore
 // les espaces et les commentaires avant de remplir ce tampon.
 export const MAX_LINE_CHARS = 79
+// Commandes qui modifient le decalage de travail (WCO).
+const WCO_CHANGE = /G\s*0*(?:10|92(?:\.\d)?|5[4-9]|43\.1|49)(?![0-9])/i
 // Delai max d'attente du message de bienvenue apres ouverture / reset.
 const BOOT_TIMEOUT_MS = 3000
 
@@ -55,6 +57,8 @@ export class GrblClient extends Emitter<GrblEvents> {
   private readyTimer: number | null = null
 
   status: GrblStatus | null = null
+  /** Vrai entre un changement d'origine (G10/G92/G5x/G43.1) et le rapport WCO suivant. */
+  wcoStale = false
   welcome: string | null = null
   homed = false
   lastProbe: { pos: { x: number; y: number; z: number }; ok: boolean } | null = null
@@ -197,6 +201,9 @@ export class GrblClient extends Emitter<GrblEvents> {
   private acknowledge(): void {
     const task = this.inFlight.shift()
     if (task) {
+      // Changement d'origine : GRBL renverra WCO dans le prochain rapport ;
+      // jusque-la, le decalage connu est perime.
+      if (WCO_CHANGE.test(task.line)) this.wcoStale = true
       this.txCount -= task.bytes
       task.resolve()
     }
@@ -252,6 +259,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     if (line.startsWith('<')) {
       const status = parseStatus(line)
       if (status) {
+        if (status.wco) this.wcoStale = false
         // Un rapport d'etat prouve que GRBL tourne (cartes sans banniere).
         if (!this.ready) this.markReady()
         if (status.state === 'Home') this.homing = true

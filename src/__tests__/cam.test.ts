@@ -142,3 +142,29 @@ describe('post-processeur fraisage', () => {
     expect(lines[m0 + 1]).toMatch(/^M3/)
   })
 })
+
+describe('V-carve', () => {
+  it('descend par paliers de doc', () => {
+    const shape = { ...createShape('rect', 1), width: 20, height: 20, depth: 3, op: 'vcarve' as const }
+    const result = generateToolpath([shape], { ...params, doc: 1, stepover: 0.3 }, 0.2, { angle: 60, docMax: 3 })
+    const zs = result.paths.map((p) => p.z)
+    expect(Math.min(...zs)).toBeCloseTo(-3)
+    // La premiere moitie des passes (palier 1) ne depasse jamais 1 mm.
+    const firstDeep = zs.findIndex((z) => z < -1 - 1e-6)
+    expect(firstDeep).toBeGreaterThan(0)
+    expect(zs.slice(0, firstDeep).every((z) => z >= -1 - 1e-6)).toBe(true)
+    // Avant un palier plus profond, le palier precedent a ete fait partout.
+    const firstDeeper = zs.findIndex((z) => z < -2 - 1e-6)
+    expect(zs.slice(firstDeep, firstDeeper).every((z) => z >= -2 - 1e-6)).toBe(true)
+  })
+})
+
+describe('optimisation des trajets', () => {
+  it('ne fait jamais une passe profonde avant une moins profonde', () => {
+    const a = { ...createShape('rect', 1), x: 20, y: 20, depth: 3, op: 'contour_out' as const }
+    const b = { ...createShape('rect', 2), x: 100, y: 20, depth: 2, op: 'pocket' as const }
+    const result = generateToolpath([a, b], params, 3, { optimize: true })
+    const zs = result.paths.map((p) => p.z)
+    for (let i = 1; i < zs.length; i++) expect(zs[i]).toBeLessThanOrEqual(zs[i - 1] + 1e-9)
+  })
+})

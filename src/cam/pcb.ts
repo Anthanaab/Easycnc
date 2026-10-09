@@ -55,14 +55,48 @@ export function drillPaths(holes: Hole[], depth: number, slots: boolean): CutPat
   return paths
 }
 
-export function outlinePaths(outline: Point[][], depth: number, tabs: TabsSettings, doc?: number): CutPath[] {
+function insidePolygon(point: Point, loop: Point[]): boolean {
+  let inside = false
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const a = loop[i]
+    const b = loop[j]
+    if (a.y > point.y !== b.y > point.y && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+/**
+ * Surface de la carte a partir du calque contour. Le Gerber decrit le contour
+ * comme un TRAIT : on obtient un anneau (bord exterieur + bord interieur).
+ * Niveaux d'imbrication : 0 = exterieur du trait, 1 = bord de carte,
+ * 2 = bord d'une decoupe interne, 3 = interieur du trait de decoupe...
+ * Carte = niveaux 1 moins niveaux 2. Contour ouvert (pas de niveau 1) :
+ * on prend l'exterieur du trait.
+ */
+export function boardRegion(outline: Point[][]): Point[][] {
+  const loops = outline.filter((loop) => loop.length >= 3)
+  if (!loops.length) return []
+  const depthOf = loops.map((loop, i) => loops.reduce((n, other, j) => (j !== i && insidePolygon(loop[0], other) ? n + 1 : n), 0))
+  const pick = (level: number) => loops.filter((_, i) => depthOf[i] === level)
+  const edges = pick(1)
+  if (!edges.length) return unionLoops([], pick(0))
+  const cutouts = pick(2)
+  return differenceLoops(unionLoops([], edges), cutouts)
+}
+
+/**
+ * Detourage : l'outil roule a l'exterieur de la carte (et a l'interieur des
+ * decoupes), decale du rayon de fraise, en plusieurs passes.
+ */
+export function outlinePaths(board: Point[][], depth: number, tabs: TabsSettings, doc?: number, toolRadius = 0): CutPath[] {
   const paths: CutPath[] = []
-  if (!outline.length) return paths
+  if (!board.length) return paths
   const finalZ = -Math.abs(depth)
   const tabZ = tabs.enabled ? finalZ + tabs.height : null
   // Detourage en plusieurs passes (profondeur de passe doc) plutot qu'en une seule.
   const levels = doc && doc > 0 ? zLevels(Math.abs(depth), doc) : [finalZ]
-  for (const loop of outline) {
+  const loops = toolRadius > 0 ? offsetLoops(board, toolRadius) : board
+  for (const loop of loops) {
     for (const z of levels) paths.push(applyTabs(loop, z, tabZ, tabs))
   }
   return paths

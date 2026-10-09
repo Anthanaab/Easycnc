@@ -633,6 +633,7 @@ export function parseDrill(text: string): DrillResult {
       holes.push({ x, y, d: tools[cur] })
     }
   }
+  if (slots.length) warnings.push(`${slots.length} trou(s) oblong(s) (G85) non usiné(s)`)
   return { holes, slots, tools, warnings }
 }
 

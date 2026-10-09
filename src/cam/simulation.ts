@@ -113,7 +113,8 @@ export function carveTool(map: HeightMap, x: number, y: number, z: number, tool:
   if (z >= 0) return
   const radius = Math.max(tool.radius, 0.02)
   const tanHalf = tool.tanHalf ?? 1
-  const influence = tool.kind === 'vbit' ? Math.max(radius, -z * tanHalf) : radius
+  // Fraise V : pointe plate de rayon `radius`, puis cone.
+  const influence = tool.kind === 'vbit' ? radius - z * tanHalf : radius
   const ix0 = Math.max(0, Math.floor((x - influence - map.x0) / map.dx))
   const ix1 = Math.min(map.gx - 1, Math.ceil((x + influence - map.x0) / map.dx))
   const iy0 = Math.max(0, Math.floor((y - influence - map.y0) / map.dy))
@@ -134,7 +135,7 @@ export function carveTool(map: HeightMap, x: number, y: number, z: number, tool:
         if (d > radius) continue
         surface = z + radius - Math.sqrt(Math.max(0, radius * radius - d * d))
       } else if (tool.kind === 'vbit') {
-        surface = z + d / tanHalf
+        surface = d <= radius ? z : z + (d - radius) / tanHalf
       } else {
         if (d > radius) continue
         surface = z
@@ -160,7 +161,7 @@ export function simulateAll(result: CamResult, map: HeightMap, radius: number): 
         const n = Math.max(1, Math.ceil(length / 0.6))
         for (let s = 1; s < n; s++) {
           const t = s / n
-          carve(map, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, zOf(p), radius)
+          carve(map, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, zOf(a) + (zOf(b) - zOf(a)) * t, radius)
         }
       }
     }
