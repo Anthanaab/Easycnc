@@ -16,6 +16,10 @@ export interface ProbeSettings {
   fast: number
   maxDepth: number
   retract: number
+  /** Palpage de coin : epaisseur des parois de la plaque (distance face palpee -> bord de la piece). */
+  xyWall?: number
+  /** Palpage de coin : distance de degagement pour contourner la plaque (mm). */
+  xyTravel?: number
 }
 
 export interface MachineProfile {

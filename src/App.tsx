@@ -18,6 +18,8 @@ import { ReliefTab } from './components/ReliefTab'
 import { SettingsPanel } from './components/SettingsPanel'
 import { ToolpathViewer } from './components/ToolpathViewer'
 import { TutorialModal } from './components/TutorialModal'
+import { UpdateBanner } from './components/UpdateBanner'
+import { UpdatePanel } from './components/UpdatePanel'
 import { View3DTab } from './components/View3DTab'
 import { AUTOSAVE_NAME, currentProject, saveProject } from './state/project'
 import { useT } from './i18n'
@@ -97,6 +99,7 @@ export function App() {
   return (
     <div className="app">
       <ConnectionBar />
+      <UpdateBanner />
       <nav className="tabs">
         {TABS.map((item) => (
           <button
@@ -145,6 +148,7 @@ export function App() {
       {tab === 'reglages' && (
         <main className="single">
           <SettingsPanel />
+          <UpdatePanel />
         </main>
       )}
 

@@ -1,11 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
+import { startAppUpdate } from './state/appUpdate'
 import { startJobWatch } from './state/jobWatch'
 import './styles.css'
 
-registerSW({ immediate: true })
+startAppUpdate()
 startJobWatch()
 
 const container = document.getElementById('root')

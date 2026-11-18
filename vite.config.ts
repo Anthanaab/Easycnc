@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
@@ -11,11 +12,25 @@ const https =
     ? { key: readFileSync(keyPath), cert: readFileSync(certPath) }
     : undefined
 
+// Version affichee dans l'interface (commit du build).
+function gitVersion(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(gitVersion()),
+    __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' : jamais de rechargement automatique (il couperait un programme en cours).
+      registerType: 'prompt',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'EasyCNC',
@@ -42,6 +57,10 @@ export default defineConfig({
     host: true,
     port: 4173,
     https,
+  },
+  // Worker FAO en module ES (il charge les polices a la demande : code-splitting).
+  worker: {
+    format: 'es',
   },
   build: {
     target: 'es2021',

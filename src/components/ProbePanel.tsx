@@ -1,5 +1,9 @@
+import { useState } from 'react'
+import type { Corner } from '../grbl/probe'
 import { useT } from '../i18n'
 import { useStore } from '../state/store'
+
+const CORNERS: Corner[] = ['front-left', 'front-right', 'back-left', 'back-right']
 
 export function ProbePanel() {
   const connected = useStore((s) => s.connected)
@@ -11,7 +15,27 @@ export function ProbePanel() {
   const unlock = useStore((s) => s.unlock)
 
   const probe = useStore((s) => s.probe)
+  const setProbe = useStore((s) => s.setProbe)
+  const runCornerProbe = useStore((s) => s.runCornerProbe)
+  const bit = useStore((s) => s.bits.find((b) => b.id === s.bitId))
+  const [corner, setCorner] = useState<Corner>('front-left')
+  const [busy, setBusy] = useState(false)
   const t = useT()
+
+  const startCorner = async () => {
+    const ok = window.confirm(
+      `${t('Palpage de coin XYZ')} — ${t(`corner.${corner}`)}\n\n` +
+        t('Avant de continuer :\n• plaque posée sur le coin (ou pièce conductrice), pince du palpeur sur la fraise\n• fraise au-dessus de la plaque, à 5–15 mm des bords\n• rien sur le passage autour du coin (brides, vis)') +
+        `\n\n${t('Fraise')} Ø ${bit?.diameter ?? '?'} mm · ${t('paroi')} ${probe.xyWall ?? 0} mm · ${t('dégagement')} ${probe.xyTravel ?? 15} mm`,
+    )
+    if (!ok) return
+    setBusy(true)
+    try {
+      await runCornerProbe(corner)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <section className="panel">
@@ -36,6 +60,31 @@ export function ProbePanel() {
           {t('Palper Z0')} ({t('plaque')} {probe.plate} mm)
         </button>
       </div>
+
+      <h3 className="sub">{t('Palpage de coin XYZ')}</h3>
+      <div className="params-grid">
+        <label className="num-field">
+          <span>{t('Coin')}</span>
+          <select value={corner} onChange={(e) => setCorner(e.target.value as Corner)}>
+            {CORNERS.map((c) => (
+              <option key={c} value={c}>
+                {t(`corner.${c}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="num-field">
+          <span>{t('Paroi plaque X/Y (mm)')}</span>
+          <input type="number" min={0} step={0.1} value={probe.xyWall ?? 0} onChange={(e) => setProbe({ xyWall: Math.max(0, Number(e.target.value)) })} />
+        </label>
+        <label className="num-field">
+          <span>{t('Dégagement latéral (mm)')}</span>
+          <input type="number" min={5} max={60} step={1} value={probe.xyTravel ?? 15} onChange={(e) => setProbe({ xyTravel: Number(e.target.value) })} />
+        </label>
+      </div>
+      <button className="btn" style={{ width: '100%' }} disabled={!connected || busy} onClick={() => void startCorner()}>
+        {busy ? t('Palpage…') : t('Palper le coin (X, Y, Z)')}
+      </button>
 
       <p className="notes">{t('Placez la plaque sur la pièce, approchez la fraise au-dessus, puis lancez le palpage. En cas d\'échec, vérifiez le câblage du palpeur et le réglage $6.')}</p>
     </section>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useCamStore } from '../cam/camStore'
 import { stockFromBounds, type ToolShape } from '../cam/simulation'
-import { generateToolpath } from '../cam/toolpath'
+import { useCamJob } from '../cam/useCamJob'
 import { useT } from '../i18n'
 import { useStore } from '../state/store'
 import { View3D } from './View3D'
@@ -27,23 +27,18 @@ export function View3DTab() {
   const t = useT()
 
   const bit = bits.find((b) => b.id === bitId) ?? bits[0]
-  const result = useMemo(
-    () =>
-      generateToolpath(shapes, params, bit.diameter, {
-        angle: bit.angle,
-        docMax: bit.docMax,
-        tabs,
-        surfacing,
-        entry: cam.entry,
-        reverse: cam.reverse,
-        optimize: cam.optimize,
-        resolveTool: (shape: { bitId?: string }) => {
-          const b = (shape.bitId && bits.find((x) => x.id === shape.bitId)) || bit
-          return { id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax }
-        },
-      }),
-    [shapes, params, bit, tabs, surfacing, cam, bits],
+  const toolInfo = (b: (typeof bits)[number]) => ({ id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax })
+  const { output } = useCamJob(
+    {
+      shapes,
+      params,
+      tool: toolInfo(bit),
+      tools: Object.fromEntries(bits.map((b) => [b.id, toolInfo(b)])),
+      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize },
+    },
+    [shapes, params, bit, bits, tabs, surfacing, cam],
   )
+  const result = output.result
   const stock = useMemo(() => stockFromBounds(result.bounds, margin), [result.bounds, margin])
 
   const hasPaths = result.paths.length > 0

@@ -5,7 +5,7 @@ import { MATERIALS, findMaterial } from '../data/materials'
 import { autoParams, type CutParams } from '../data/params'
 import type { Bit, MachineProfile, Material, ProbeSettings } from '../data/types'
 import { GrblClient, MAX_LINE_CHARS, grblLineLength } from '../grbl/GrblClient'
-import { probeZ } from '../grbl/probe'
+import { probeCorner, probeZ, type Corner } from '../grbl/probe'
 import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
@@ -95,6 +95,7 @@ export interface AppState {
   exportSettings: () => void
   importSettings: (json: string) => void
   runProbe: () => Promise<void>
+  runCornerProbe: (corner: Corner) => Promise<void>
   setMachine: (id: string) => void
   setMaterial: (id: string) => void
   setBit: (id: string) => void
@@ -424,6 +425,26 @@ export const useStore = create<AppState>((set, get) => ({
       const probe = { ...get().probe }
       if (machine) probe.maxDepth = Math.max(probe.maxDepth, machine.area.z)
       await probeZ(client, probe, (key, params) => pushLog('info', tr(key, params)))
+      void client.send('$#').catch(() => undefined)
+    } catch (error) {
+      pushLog('error', tr('Palpage echoue: {msg} (verifiez le cablage et $6, puis $X)', { msg: message(error) }))
+    }
+  },
+
+  runCornerProbe: async (corner) => {
+    if (!guard()) return
+    if (get().status?.state !== 'Idle') {
+      pushLog('error', tr('Machine non prête (attendez Idle)'))
+      return
+    }
+    try {
+      const machine = get().machines.find((m) => m.id === get().machineId)
+      const probe = { ...get().probe }
+      if (machine) probe.maxDepth = Math.max(probe.maxDepth, machine.area.z)
+      const bit = get().bits.find((b) => b.id === get().bitId) ?? get().bits[0]
+      await probeCorner(client, probe, { corner, toolDiameter: bit.diameter }, (key, params) =>
+        pushLog('info', tr(key, { ...params, corner: tr(`corner.${corner}`) })),
+      )
       void client.send('$#').catch(() => undefined)
     } catch (error) {
       pushLog('error', tr('Palpage echoue: {msg} (verifiez le cablage et $6, puis $X)', { msg: message(error) }))

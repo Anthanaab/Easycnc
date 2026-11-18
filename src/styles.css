@@ -1405,3 +1405,47 @@ select.job-badge {
   padding: 2px 6px;
   font-size: 11px;
 }
+
+/* ---------- Mises a jour ---------- */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  border-bottom: 1px solid var(--border);
+}
+
+.update-panel {
+  margin-top: 10px;
+}
+
+.update-versions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.update-log {
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 700px) {
+  .update-versions {
+    grid-template-columns: 1fr;
+  }
+}

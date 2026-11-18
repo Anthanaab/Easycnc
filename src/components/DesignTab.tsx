@@ -1,7 +1,5 @@
-import { useMemo } from 'react'
 import { useCamStore } from '../cam/camStore'
-import { toolpathToGcode } from '../cam/gcode'
-import { generateToolpath } from '../cam/toolpath'
+import { useCamJob } from '../cam/useCamJob'
 import { useLoc, useT } from '../i18n'
 import { useStore } from '../state/store'
 import { useUiStore } from '../state/uiStore'
@@ -54,33 +52,21 @@ export function DesignTab() {
   const language = useUiStore((s) => s.language)
   const t = useT()
   const loc = useLoc()
-  const toolOf = (shapeId: string | undefined) => {
-    const chosen = shapeId ? bits.find((b) => b.id === shapeId) : bit
-    return chosen ?? bit
-  }
-  const resolveTool = (shape: { bitId?: string }) => {
-    const b = toolOf(shape.bitId)
-    return { id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax, cutLength: b.cutLength }
-  }
+  const toolInfo = (b: (typeof bits)[number]) => ({ id: b.id, diameter: b.diameter, angle: b.angle, docMax: b.docMax, cutLength: b.cutLength })
   const toolNames = Object.fromEntries(bits.map((b) => [b.id, loc(b.name, b.nameEn)]))
 
   const bit = bits.find((b) => b.id === bitId) ?? bits[0]
   const machine = machines.find((m) => m.id === machineId) ?? machines[0]
 
-  const result = useMemo(
-    () =>
-      generateToolpath(
-        shapes.filter((s) => s.op !== 'laser_contour' && s.op !== 'laser_fill'),
-        params,
-        bit.diameter,
-        { angle: bit.angle, docMax: bit.docMax, tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize, resolveTool },
-      ),
-    [shapes, params, bit, tabs, surfacing, cam, bits],
-  )
-
-  const gcode = useMemo(
-    () =>
-      toolpathToGcode(result, {
+  // Calcul FAO + G-code dans un Web Worker : l'interface reste fluide.
+  const { output, pending: computing } = useCamJob(
+    {
+      shapes: shapes.filter((s) => s.op !== 'laser_contour' && s.op !== 'laser_fill'),
+      params,
+      tool: toolInfo(bit),
+      tools: Object.fromEntries(bits.map((b) => [b.id, toolInfo(b)])),
+      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize },
+      gcode: {
         safeZ: params.safeZ,
         feed: params.feed,
         plunge: params.plunge,
@@ -97,9 +83,12 @@ export function DesignTab() {
           y: cam.toolChangeY,
           reprobe: cam.reprobe,
         },
-      }),
-    [result, params, machine, cam, language],
+      },
+    },
+    [shapes, params, bit, bits, tabs, surfacing, cam, machine, language],
   )
+  const result = output.result
+  const gcode = output.gcode ?? ''
 
   const cutMinutes = params.feed > 0 ? result.cutLength / params.feed : 0
   const plcMinutes = result.paths.length > 0 ? (result.paths.length * (params.safeZ * 2 + Math.abs(params.doc))) / Math.max(params.plunge, 1) : 0
@@ -286,10 +275,10 @@ export function DesignTab() {
             </div>
           )}
           <div className="stream-controls">
-            <button className="btn primary" disabled={!result.paths.length || fontsPending} onClick={load}>
-              {fontsPending ? t('Chargement des polices…') : t('Charger dans Pilotage')}
+            <button className="btn primary" disabled={!result.paths.length || fontsPending || computing} onClick={load}>
+              {fontsPending ? t('Chargement des polices…') : computing ? t('Calcul…') : t('Charger dans Pilotage')}
             </button>
-            <button className="btn" disabled={!result.paths.length || fontsPending} onClick={download}>
+            <button className="btn" disabled={!result.paths.length || fontsPending || computing} onClick={download}>
               {t('Télécharger .nc')}
             </button>
           </div>

@@ -8,6 +8,7 @@ FAO (fraisage / laser / PCB), aperçu 3D et envoi du G-code.
 
 - **Pilotage** : connexion GRBL (Web Serial), DRO, jog continu (souris + clavier),
   overrides avance/broche/rapide, feed hold / cycle start, palpage Z guidé,
+  **palpage de coin XYZ** (plaque en L ou pièce conductrice),
   essai à blanc, homing, suivi alarme/origine.
 - **Machines & outils** : profils machines éditables, matériaux, **fraises créables/éditables**
   (sélecteur visuel avec icône par type), calcul automatique des paramètres de coupe.
@@ -26,6 +27,9 @@ FAO (fraisage / laser / PCB), aperçu 3D et envoi du G-code.
 - **Relief 3D** : depuis une image niveaux de gris, ébauche + finitions, simulation.
 - **Projets** : sauvegarde/chargement/export JSON, autosave + miniatures ; **tutoriel** intégré.
 - **Interface** : thème clair/sombre, **FR/EN**, PWA hors-ligne, raccourcis clavier.
+- **Mises à jour** : bandeau « nouvelle version » (jamais de rechargement pendant un
+  programme) et, sur le serveur Proxmox, **mise à jour depuis l'interface**
+  (Réglages GRBL → Mise à jour).
 
 ## Prérequis
 

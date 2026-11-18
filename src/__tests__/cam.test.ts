@@ -168,3 +168,23 @@ describe('optimisation des trajets', () => {
     for (let i = 1; i < zs.length; i++) expect(zs[i]).toBeLessThanOrEqual(zs[i - 1] + 1e-9)
   })
 })
+
+import { runCamJob } from '../cam/camJob'
+
+describe('runCamJob (calcul en Web Worker)', () => {
+  it('donne le meme resultat que generateToolpath + toolpathToGcode', async () => {
+    const shape = { ...createShape('rect', 1), depth: 2, op: 'contour_out' as const, bitId: 'b2' }
+    const gcodeOptions = { safeZ: 5, feed: 600, plunge: 200, rpm: 12000, spindleMode: 'grbl' as const }
+    const job = await runCamJob({
+      shapes: [shape],
+      params,
+      tool: { id: 'b1', diameter: 3 },
+      tools: { b2: { id: 'b2', diameter: 6 } },
+      options: { tabs },
+      gcode: gcodeOptions,
+    })
+    const direct = generateToolpath([shape], params, 3, { tabs, resolveTool: () => ({ id: 'b2', diameter: 6 }) })
+    expect(job.result.paths).toEqual(direct.paths)
+    expect(job.gcode).toBe(toolpathToGcode(direct, gcodeOptions))
+  })
+})

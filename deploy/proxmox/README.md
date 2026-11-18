@@ -21,7 +21,7 @@ CTID=210 CORES=2 RAM=2048 DISK=8 STORAGE=local-lvm BRIDGE=vmbr0 \
 
 Par défaut : **nom `Easycnc`** et **ID choisi automatiquement** (le prochain libre
 après tes conteneurs/VM existants). Le script crée le conteneur, l'installe
-(Node 20, nginx, build) et affiche l'URL `https://<ip-du-conteneur>/`.
+(Node 22, nginx, build) et affiche l'URL `https://<ip-du-conteneur>/`.
 
 ## Dans un LXC Debian/Ubuntu existant (en root)
 
@@ -33,9 +33,26 @@ curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easycnc/main/deploy/proxm
 
 ## Mise à jour
 
+**Depuis l'interface** : onglet **Réglages GRBL → Mise à jour → « Mettre à jour le
+serveur »**. Le serveur récupère la dernière version (`main`), vérifie (typecheck +
+tests), build et bascule le site d'un coup ; le journal s'affiche en direct. Une
+fois terminé, un bandeau propose de **recharger la page**.
+
+- Bouton désactivé pendant un programme ; la page n'est **jamais rechargée
+  automatiquement** (un rechargement couperait la coupe en cours).
+- En cas d'échec (build ou tests), l'ancienne version reste en service.
+- Le service `easycnc-updater` tourne sous un utilisateur dédié `easycnc`
+  (pas root) et ne peut qu'avancer sur la branche officielle (fast-forward).
+
+**En ligne de commande** (dans le conteneur, en root) :
+
 ```bash
-update          # dans le conteneur : MAJ système (apt) + git pull + rebuild + reload nginx
+update          # MAJ système (apt) + EasyCNC + configuration (nginx, service)
 ```
+
+> Installation antérieure à la mise à jour web : lancez **une fois**
+> `bash /opt/easycnc/deploy/proxmox/install.sh` pour créer l'utilisateur
+> `easycnc`, le service et la configuration nginx.
 
 ## Accès
 
