@@ -1,5 +1,6 @@
 import type { CutParams } from '../data/params'
 import { toolpathToGcode, type GcodeOptions } from './gcode'
+import { levelPaths, type LevelMap } from './leveling'
 import { loadFonts } from './text'
 import { generateToolpath, type CamResult, type GenOptions } from './toolpath'
 import type { Shape } from './types'
@@ -22,6 +23,8 @@ export interface CamJob {
   options: Omit<GenOptions, 'resolveTool' | 'angle' | 'docMax'>
   /** Si present, le G-code est genere aussi. */
   gcode?: GcodeOptions
+  /** Carte de nivellement a appliquer (surface non plane). */
+  level?: LevelMap | null
 }
 
 export interface CamJobResult {
@@ -39,5 +42,6 @@ export async function runCamJob(job: CamJob): Promise<CamJobResult> {
     docMax: job.tool.docMax,
     resolveTool,
   })
-  return { result, gcode: job.gcode ? toolpathToGcode(result, job.gcode) : null }
+  const final = job.level ? { ...result, paths: levelPaths(result.paths, job.level) } : result
+  return { result: final, gcode: job.gcode ? toolpathToGcode(final, job.gcode) : null }
 }

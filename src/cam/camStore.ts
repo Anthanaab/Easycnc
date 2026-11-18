@@ -159,6 +159,7 @@ const DEFAULT_CAM: CamOptions = {
   toolChangeX: 0,
   toolChangeY: 0,
   reprobe: true,
+  opOrder: 'operation',
 }
 
 // Ancien defaut centre sur (0,0) : on le replace dans le quadrant positif

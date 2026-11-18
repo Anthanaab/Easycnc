@@ -86,7 +86,9 @@ interface ParseState {
   motion: 0 | 1 | 2 | 3
 }
 
-export function parseGcode(source: string): Toolpath {
+/** arcTolerance : finesse de decoupage des arcs pour l'apercu (mm). */
+export function parseGcode(source: string, options: { arcTolerance?: number } = {}): Toolpath {
+  const arcTolerance = options.arcTolerance ?? ARC_TOLERANCE
   const lines = stripComments(source)
   const segments: Segment[] = []
   const warnings = new Set<string>()
@@ -223,7 +225,7 @@ export function parseGcode(source: string): Toolpath {
     if (state.motion === 0 || state.motion === 1) {
       pushSegment(start, target, state.motion === 0)
     } else {
-      const points = buildArc(state, start, target, { i, j, k, r })
+      const points = buildArc(state, start, target, { i, j, k, r }, arcTolerance)
       let previous = start
       for (const point of points) {
         pushSegment(previous, point, false)
@@ -270,7 +272,7 @@ interface ArcWords {
   r?: number
 }
 
-function buildArc(state: ParseState, start: Vec3, end: Vec3, words: ArcWords): Vec3[] {
+function buildArc(state: ParseState, start: Vec3, end: Vec3, words: ArcWords, tolerance: number): Vec3[] {
   const clockwise = state.motion === 2
   if (state.plane !== 17) {
     // Plans non supportes: interpolation lineaire de secours.
@@ -310,7 +312,7 @@ function buildArc(state: ParseState, start: Vec3, end: Vec3, words: ArcWords): V
   const r = Math.hypot(start.x - center.x, start.y - center.y)
   if (r < 1e-9) return [end]
   const sweep = sweepAngle(start, end, center, clockwise)
-  const maxAngle = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - ARC_TOLERANCE / r)))
+  const maxAngle = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - tolerance / r)))
   const steps = Math.max(1, Math.min(MAX_ARC_STEPS, Math.ceil(Math.abs(sweep) / Math.max(maxAngle, 1e-4))))
 
   const a0 = Math.atan2(start.y - center.y, start.x - center.x)

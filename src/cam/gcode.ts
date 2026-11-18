@@ -1,3 +1,4 @@
+import { fitArcs } from './arcFit'
 import type { CamResult, CutPath, CutPoint } from './toolpath'
 
 export interface LaserGcodeOptions {
@@ -160,6 +161,26 @@ function millGcode(result: CamResult, options: GcodeOptions): string {
       lines.push(`${cw ? 'G2' : 'G3'} X${num(first.x)} Y${num(first.y)} I${num(i)} J${num(j)} F${num(options.feed)}`)
       currentX = first.x
       currentY = first.y
+      continue
+    }
+
+    // Arcs G2/G3 sur toutes les courbes (texte, SVG, congés) : fichier plus
+    // leger et mouvement plus fluide. Seulement a Z constant.
+    if (options.arcs && flat && path.points.length >= 4) {
+      const sequence = path.closed ? [...path.points, first] : path.points
+      let feedSet = false
+      for (const segment of fitArcs(sequence)) {
+        const f = feedSet ? '' : ` F${num(options.feed)}`
+        feedSet = true
+        const end = segment.to
+        if (segment.kind === 'arc') {
+          lines.push(`${segment.cw ? 'G2' : 'G3'} X${num(end.x)} Y${num(end.y)} I${num(segment.cx - currentX)} J${num(segment.cy - currentY)}${f}`)
+        } else {
+          lines.push(`G1 X${num(end.x)} Y${num(end.y)}${f}`)
+        }
+        currentX = end.x
+        currentY = end.y
+      }
       continue
     }
 

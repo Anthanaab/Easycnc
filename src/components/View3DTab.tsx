@@ -34,7 +34,7 @@ export function View3DTab() {
       params,
       tool: toolInfo(bit),
       tools: Object.fromEntries(bits.map((b) => [b.id, toolInfo(b)])),
-      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize },
+      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize, opOrder: cam.opOrder ?? 'operation' },
     },
     [shapes, params, bit, bits, tabs, surfacing, cam],
   )

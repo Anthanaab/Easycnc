@@ -164,8 +164,11 @@ describe('optimisation des trajets', () => {
     const a = { ...createShape('rect', 1), x: 20, y: 20, depth: 3, op: 'contour_out' as const }
     const b = { ...createShape('rect', 2), x: 100, y: 20, depth: 2, op: 'pocket' as const }
     const result = generateToolpath([a, b], params, 3, { optimize: true })
-    const zs = result.paths.map((p) => p.z)
-    for (let i = 1; i < zs.length; i++) expect(zs[i]).toBeLessThanOrEqual(zs[i - 1] + 1e-9)
+    // Au sein d'une meme operation, profondeurs jamais remontees.
+    for (let i = 1; i < result.paths.length; i++) {
+      if (result.paths[i].rank !== result.paths[i - 1].rank) continue
+      expect(result.paths[i].z).toBeLessThanOrEqual(result.paths[i - 1].z + 1e-9)
+    }
   })
 })
 
@@ -186,5 +189,63 @@ describe('runCamJob (calcul en Web Worker)', () => {
     const direct = generateToolpath([shape], params, 3, { tabs, resolveTool: () => ({ id: 'b2', diameter: 6 }) })
     expect(job.result.paths).toEqual(direct.paths)
     expect(job.gcode).toBe(toolpathToGcode(direct, gcodeOptions))
+  })
+})
+
+describe("ordre d'usinage", () => {
+  const engrave = { ...createShape('rect', 1), x: 100, y: 100, depth: 0.5, op: 'on' as const }
+  const pocket = { ...createShape('rect', 2), x: 40, y: 40, width: 10, height: 10, depth: 2, op: 'pocket' as const }
+  const cutout = { ...createShape('rect', 3), x: 40, y: 40, width: 80, height: 60, depth: 3, op: 'contour_out' as const }
+
+  for (const optimize of [false, true]) {
+    it(`detourage en dernier, meme liste en desordre (optimisation ${optimize ? 'active' : 'inactive'})`, () => {
+      const result = generateToolpath([cutout, pocket, engrave], params, 3, { optimize })
+      const ranks = result.paths.map((p) => p.rank ?? 0)
+      for (let i = 1; i < ranks.length; i++) expect(ranks[i]).toBeGreaterThanOrEqual(ranks[i - 1])
+      expect(result.paths[result.paths.length - 1].z).toBe(-3)
+      expect(result.paths[0].z).toBe(-0.5)
+    })
+  }
+
+  it("ordre des formes respecte si demande", () => {
+    const result = generateToolpath([cutout, engrave], params, 3, { opOrder: 'shapes' })
+    expect(result.paths[0].z).toBe(-1)
+  })
+})
+
+import { levelPaths, makeLevelMap } from '../cam/leveling'
+
+describe('nivellement', () => {
+  // Plan incline : +1 mm en X sur 100 mm.
+  const level = makeLevelMap({ min: { x: 0, y: 0 }, max: { x: 100, y: 100 } }, 2, 2, [0, 1, 0, 1])
+
+  it('suit le relief le long des longs segments (subdivision)', () => {
+    const [path] = levelPaths([{ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], closed: false, z: -0.2 }], level)
+    expect(path.points.length).toBeGreaterThan(40)
+    const mid = path.points.find((p) => Math.abs(p.x - 50) < 1.1)!
+    expect(mid.z).toBeCloseTo(-0.2 + mid.x / 100, 5)
+  })
+
+  it('conserve les Z propres aux points (tenons, rampes)', () => {
+    const [path] = levelPaths([{ points: [{ x: 0, y: 0, z: -1 }, { x: 0, y: 1, z: -3 }], closed: false, z: -3 }], level)
+    expect(path.points[0].z).toBeCloseTo(-1)
+    expect(path.points[path.points.length - 1].z).toBeCloseTo(-3)
+  })
+
+  it('ne nivelle pas le surfacage', () => {
+    const surfacing = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], closed: false, z: -0.5, surfacing: true }
+    expect(levelPaths([surfacing], level)[0]).toBe(surfacing)
+  })
+
+  it('boucle fermee : pas de point duplique a la fin', () => {
+    const square = [
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 20, y: 20 },
+      { x: 10, y: 20 },
+    ]
+    const [path] = levelPaths([{ points: square, closed: true, z: -1 }], level)
+    const last = path.points[path.points.length - 1]
+    expect(last.x === 10 && last.y === 10).toBe(false)
   })
 })

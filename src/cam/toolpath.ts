@@ -14,6 +14,10 @@ export interface CutPath {
   z: number
   power?: number
   toolId?: string
+  /** Rang de l'operation (ordre d'usinage), utilise par l'optimisation. */
+  rank?: number
+  /** Passe de surfacage (jamais nivelee). */
+  surfacing?: boolean
 }
 
 export interface CamResult {
@@ -40,7 +44,20 @@ export interface GenOptions {
   entry?: 'plunge' | 'ramp'
   reverse?: boolean
   optimize?: boolean
+  /** 'operation' (defaut) : gravure, poches, contours interieurs, puis detourage en dernier. */
+  opOrder?: 'operation' | 'shapes'
   resolveTool?: (shape: Shape) => { id?: string; diameter: number; angle?: number; docMax?: number; cutLength?: number }
+}
+
+const OP_RANK: Record<Shape['op'], number> = {
+  none: 0,
+  on: 1,
+  vcarve: 2,
+  laser_contour: 3,
+  laser_fill: 3,
+  pocket: 4,
+  contour_in: 5,
+  contour_out: 6,
 }
 
 function positive(value: number, fallback: number): number {
@@ -69,7 +86,13 @@ export function generateToolpath(
   let bounds: Bounds | null = null
   let allBounds: Bounds | null = null
 
-  for (const shape of shapes) {
+  // Ordre d'usinage : la piece n'est detouree qu'en dernier (sinon elle peut
+  // bouger pendant la gravure ou les poches). Tri stable : l'ordre des formes
+  // est conserve a operation egale.
+  const ordered =
+    options.opOrder === 'shapes' ? shapes : [...shapes].sort((a, b) => OP_RANK[a.op] - OP_RANK[b.op])
+
+  for (const shape of ordered) {
     if (!shape.enabled) continue
     const loops = shapeLoops(shape)
     for (const loop of loops) allBounds = mergeBounds(allBounds, boundsOfPoints(loop))
@@ -81,8 +104,10 @@ export function generateToolpath(
     const radius = Math.max(positive(tool.diameter, 0.1), 0.1) / 2
     const startIdx = paths.length
     const tag = () => {
-      if (!tool.id) return
-      for (let i = startIdx; i < paths.length; i++) paths[i].toolId = tool.id
+      for (let i = startIdx; i < paths.length; i++) {
+        if (tool.id) paths[i].toolId = tool.id
+        if (options.opOrder !== 'shapes') paths[i].rank = OP_RANK[shape.op]
+      }
     }
 
     const isLaser = shape.op === 'laser_contour' || shape.op === 'laser_fill'
@@ -166,7 +191,9 @@ export function generateToolpath(
     const order: string[] = []
     const groups = new Map<string, CutPath[]>()
     for (const path of paths) {
-      const key = path.toolId ?? ''
+      // Groupes par outil ET par operation : l'optimisation ne remelange pas
+      // l'ordre d'usinage (detourage toujours en dernier).
+      const key = `${path.toolId ?? ''}|${path.rank ?? 0}`
       if (!groups.has(key)) {
         groups.set(key, [])
         order.push(key)
@@ -422,7 +449,7 @@ function surfacingPaths(bounds: Bounds, surfacing: SurfacingSettings): CutPath[]
             { x: max.x, y },
             { x: min.x, y },
           ]
-    paths.push({ points, closed: false, z: -Math.abs(surfacing.depth) })
+    paths.push({ points, closed: false, z: -Math.abs(surfacing.depth), surfacing: true })
     direction = -direction
   }
   return paths

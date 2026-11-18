@@ -1,6 +1,7 @@
 import type { Hole } from './gerber'
 import { differenceLoops, offsetLoops, unionLoops } from './offset'
 import { applyTabs, zLevels, type CutPath } from './toolpath'
+export { applyLeveling, levelAt, levelPaths, makeLevelMap, type LevelMap } from './leveling'
 import type { Bounds, Point, TabsSettings } from './types'
 
 export interface IsolationOptions {
@@ -11,15 +12,6 @@ export interface IsolationOptions {
   depth: number
 }
 
-export interface LevelMap {
-  x0: number
-  y0: number
-  dx: number
-  dy: number
-  cols: number
-  rows: number
-  heights: number[]
-}
 
 export function mirrorX(paths: Point[][], bounds: Bounds): Point[][] {
   return paths.map((loop) => loop.map((p) => ({ x: bounds.min.x + bounds.max.x - p.x, y: p.y })))
@@ -102,41 +94,8 @@ export function outlinePaths(board: Point[][], depth: number, tabs: TabsSettings
   return paths
 }
 
-export function levelAt(level: LevelMap, x: number, y: number): number {
-  if (level.cols < 2 || level.rows < 2) return level.heights[0] ?? 0
-  const fx = Math.min(Math.max((x - level.x0) / level.dx, 0), level.cols - 1.001)
-  const fy = Math.min(Math.max((y - level.y0) / level.dy, 0), level.rows - 1.001)
-  const ix = Math.floor(fx)
-  const iy = Math.floor(fy)
-  const tx = fx - ix
-  const ty = fy - iy
-  const h00 = level.heights[iy * level.cols + ix]
-  const h10 = level.heights[iy * level.cols + ix + 1]
-  const h01 = level.heights[(iy + 1) * level.cols + ix]
-  const h11 = level.heights[(iy + 1) * level.cols + ix + 1]
-  return h00 * (1 - tx) * (1 - ty) + h10 * tx * (1 - ty) + h01 * (1 - tx) * ty + h11 * tx * ty
-}
 
-/** Applique la carte des hauteurs en Z par point (nivellement automatique). */
-export function applyLeveling(paths: CutPath[], level: LevelMap): void {
-  for (const path of paths) {
-    for (const point of path.points) {
-      point.z = path.z + levelAt(level, point.x, point.y)
-    }
-  }
-}
 
-export function makeLevelMap(bounds: Bounds, cols: number, rows: number, heights: number[]): LevelMap {
-  return {
-    x0: bounds.min.x,
-    y0: bounds.min.y,
-    dx: (bounds.max.x - bounds.min.x) / Math.max(1, cols - 1),
-    dy: (bounds.max.y - bounds.min.y) / Math.max(1, rows - 1),
-    cols,
-    rows,
-    heights,
-  }
-}
 
 export interface ClearingOptions {
   toolRadius: number

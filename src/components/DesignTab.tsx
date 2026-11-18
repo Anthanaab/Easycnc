@@ -1,5 +1,7 @@
 import { useCamStore } from '../cam/camStore'
 import { useCamJob } from '../cam/useCamJob'
+import { levelStillValid, useLevelStore } from '../state/levelStore'
+import { MillLevelPanel } from './MillLevelPanel'
 import { useLoc, useT } from '../i18n'
 import { useStore } from '../state/store'
 import { useUiStore } from '../state/uiStore'
@@ -58,6 +60,13 @@ export function DesignTab() {
   const bit = bits.find((b) => b.id === bitId) ?? bits[0]
   const machine = machines.find((m) => m.id === machineId) ?? machines[0]
 
+  // Nivellement : applique seulement si la carte correspond encore au Z0 actuel.
+  const levelMap = useLevelStore((s) => s.map)
+  const levelEnabled = useLevelStore((s) => s.enabled)
+  const levelWcoZ = useLevelStore((s) => s.wcoZ)
+  const currentWcoZ = useStore((s) => s.status?.wco?.z)
+  const level = levelEnabled && levelStillValid(levelWcoZ, currentWcoZ) ? levelMap : null
+
   // Calcul FAO + G-code dans un Web Worker : l'interface reste fluide.
   const { output, pending: computing } = useCamJob(
     {
@@ -65,7 +74,8 @@ export function DesignTab() {
       params,
       tool: toolInfo(bit),
       tools: Object.fromEntries(bits.map((b) => [b.id, toolInfo(b)])),
-      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize },
+      options: { tabs, surfacing, entry: cam.entry, reverse: cam.reverse, optimize: cam.optimize, opOrder: cam.opOrder ?? 'operation' },
+      level,
       gcode: {
         safeZ: params.safeZ,
         feed: params.feed,
@@ -85,7 +95,7 @@ export function DesignTab() {
         },
       },
     },
-    [shapes, params, bit, bits, tabs, surfacing, cam, machine, language],
+    [shapes, params, bit, bits, tabs, surfacing, cam, machine, language, level],
   )
   const result = output.result
   const gcode = output.gcode ?? ''
@@ -225,6 +235,13 @@ export function DesignTab() {
               </select>
             </label>
           </div>
+          <label className="field">
+            <span>{t("Ordre d'usinage")}</span>
+            <select value={cam.opOrder ?? 'operation'} onChange={(e) => setCam({ opOrder: e.target.value as 'operation' | 'shapes' })}>
+              <option value="operation">{t('Par opération : gravure → poches → contours int. → détourage')}</option>
+              <option value="shapes">{t('Ordre de la liste des formes')}</option>
+            </select>
+          </label>
           <label className="check">
             <input type="checkbox" checked={cam.optimize} onChange={(e) => setCam({ optimize: e.target.checked })} />
             {t('Optimiser l\'ordre des parcours (moins de déplacements)')}
@@ -240,7 +257,7 @@ export function DesignTab() {
           </div>
           <label className="check">
             <input type="checkbox" checked={cam.arcs} onChange={(e) => setCam({ arcs: e.target.checked })} />
-            {t('Sortie en arcs G2/G3 (cercles)')}
+            {t('Sortie en arcs G2/G3 (courbes)')}
           </label>
           <h3 className="sub">{t('Changement d\'outil')}</h3>
           <label className="check">
@@ -258,6 +275,9 @@ export function DesignTab() {
 
           <p className="notes">{t('V-carve : choisissez une fraise V et l\'opération « V-carve » sur la forme. Le surfaçage couvre l\'ensemble des formes (passe parallèle).')}</p>
         </section>
+
+        {/* Le nivellement ne change que Z : l'emprise XY reste celle des parcours. */}
+        <MillLevelPanel bounds={result.bounds} />
 
         <section className="panel">
           <h2>{t('Sortie G-code')}</h2>

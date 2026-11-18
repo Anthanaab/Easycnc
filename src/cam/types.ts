@@ -85,6 +85,8 @@ export interface CamOptions {
   toolChangeX: number
   toolChangeY: number
   reprobe: boolean
+  /** Ordre : par operation (gravure -> poches -> contours int. -> detourage) ou ordre des formes. */
+  opOrder?: 'operation' | 'shapes'
 }
 
 export interface LaserPreset {
