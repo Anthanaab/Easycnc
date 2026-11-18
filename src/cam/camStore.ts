@@ -4,6 +4,7 @@ import { alignShapes, distributeShapes, type AlignMode, type DistributeAxis } fr
 import { shapeLoops } from './geometry'
 import type { LaserImage } from './laserImage'
 import { importSvg } from './svg'
+import { fontsReady, loadFonts, onFontsReady } from './text'
 import { LASER_PRESETS } from '../data/laserPresets'
 import {
   createShape,
@@ -26,6 +27,8 @@ interface ViewState {
 
 interface CamState {
   shapes: Shape[]
+  /** Polices chargees (les textes sont vides avant : export bloque). */
+  fontsLoaded: boolean
   selectedIds: string[]
   past: Shape[][]
   future: Shape[][]
@@ -168,6 +171,7 @@ const initialStock: StockSettings = (() => {
 
 export const useCamStore = create<CamState>((set, get) => ({
   shapes: initialShapes,
+  fontsLoaded: fontsReady(),
   selectedIds: [],
   past: [],
   future: [],
@@ -403,3 +407,8 @@ export const useCamStore = create<CamState>((set, get) => ({
     set({ shapes: [], selectedIds: [] })
   },
 }))
+
+// Polices chargees : nouveaux tableaux de formes pour recalculer les textes
+// (contours, parcours, apercus). Chargement anticipe si le projet contient du texte.
+onFontsReady(() => useCamStore.setState((state) => ({ fontsLoaded: true, shapes: [...state.shapes] })))
+if (initialShapes.some((shape) => shape.kind === 'text')) void loadFonts()

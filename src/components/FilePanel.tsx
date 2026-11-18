@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { estimateMinutes } from '../gcode/estimate'
 import { useT } from '../i18n'
+import { addRecentFile, getRecentFile, listRecentFiles, removeRecentFile, type RecentFile } from '../state/recentFiles'
 import { jobLimits, useStore } from '../state/store'
 
 export function FilePanel() {
@@ -31,13 +32,32 @@ export function FilePanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
   const [fromLine, setFromLine] = useState('')
+  const [recent, setRecent] = useState<Array<Omit<RecentFile, 'text'>>>([])
   const t = useT()
+
+  const refreshRecent = () => void listRecentFiles().then(setRecent)
+  useEffect(refreshRecent, [])
 
   const readFile = (file: File) => {
     if (running || paused) return
     const reader = new FileReader()
-    reader.onload = () => loadFile(file.name, String(reader.result ?? ''))
+    reader.onload = () => {
+      const text = String(reader.result ?? '')
+      loadFile(file.name, text)
+      void addRecentFile(file.name, text).then(refreshRecent)
+    }
     reader.readAsText(file)
+  }
+
+  const openRecent = async (name: string) => {
+    if (!name || running || paused) return
+    const file = await getRecentFile(name)
+    if (!file) {
+      refreshRecent()
+      return
+    }
+    loadFile(file.name, file.text)
+    void addRecentFile(file.name, file.text).then(refreshRecent)
   }
 
   const onDrop = (event: React.DragEvent) => {
@@ -106,6 +126,33 @@ export function FilePanel() {
           }}
         />
       </div>
+
+      {recent.length > 0 && (
+        <div className="recent-files">
+          <select
+            value=""
+            disabled={running || paused}
+            aria-label={t('Fichiers récents')}
+            onChange={(e) => void openRecent(e.target.value)}
+          >
+            <option value="">{t('Fichiers récents…')}</option>
+            {recent.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.name} — {formatSize(f.size)} · {new Date(f.openedAt).toLocaleDateString()}
+              </option>
+            ))}
+          </select>
+          {fileName && recent.some((f) => f.name === fileName) && (
+            <button
+              className="btn tiny"
+              title={t('Retirer des récents')}
+              onClick={() => void removeRecentFile(fileName).then(refreshRecent)}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="file-name">
         {fileName ?? t('Aucun fichier (glisser-déposer)')}
@@ -233,4 +280,10 @@ function remainingSeconds(elapsedMs: number, done: number, total: number, estima
   const fraction = total ? done / total : 0
   if (fraction > 0.03 && elapsedMs > 20000) return ((elapsedMs / 1000) * (1 - fraction)) / fraction
   return estimateMinutes !== undefined ? estimateMinutes * 60 * (1 - fraction) : Number.NaN
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`
+  return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
 }

@@ -31,7 +31,7 @@ export function ConnectionBar() {
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
   const machineLabel = machine
     ? `${loc(machine.brand, machine.brandEn)} — ${loc(machine.name, machine.nameEn)}`
-    : 'Contrôleur GRBL'
+    : t('Contrôleur GRBL')
 
   const state = machineState ?? (connected ? '…' : 'offline')
   const badgeClass = `state-badge state-${state.toLowerCase()}`
@@ -50,7 +50,7 @@ export function ConnectionBar() {
         <select value={baud} onChange={(e) => setBaud(Number(e.target.value))} disabled={connected}>
           {BAUD_RATES.map((rate) => (
             <option key={rate} value={rate}>
-              {rate} bauds
+              {rate} {t('bauds')}
             </option>
           ))}
         </select>
@@ -69,13 +69,13 @@ export function ConnectionBar() {
       </div>
 
       <div className="topbar-group">
-        <button className="btn" disabled={!connected} onClick={unlock} title="Deverrouille ($X)">
+        <button className="btn" disabled={!connected} onClick={unlock} title={t('Déverrouiller ($X)')}>
           {t('top.unlock')}
         </button>
-        <button className="btn" disabled={!connected} onClick={home} title="Origine machine ($H)">
+        <button className="btn" disabled={!connected} onClick={home} title={t('Origine machine ($H)')}>
           {t('top.home')}
         </button>
-        <button className="btn" disabled={!connected} onClick={softReset} title="Reset logiciel (Ctrl-X)">
+        <button className="btn" disabled={!connected} onClick={softReset} title={t('Reset logiciel (Ctrl-X)')}>
           {t('top.reset')}
         </button>
       </div>
@@ -87,10 +87,10 @@ export function ConnectionBar() {
         <button className="btn" onClick={() => openModal('tutorial')}>
           {t('top.help')}
         </button>
-        <button className="btn" title="Thème" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <button className="btn" title={t('Thème')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? '☀' : '☾'}
         </button>
-        <button className="btn" title="Langue" onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')}>
+        <button className="btn" title={t('Langue')} onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')}>
           {language.toUpperCase()}
         </button>
       </div>
@@ -101,7 +101,7 @@ export function ConnectionBar() {
 
       <div className="topbar-info">
         {!supported ? (
-          <span className="warn">Web Serial indisponible : utilisez Chrome ou Edge en HTTPS/localhost.</span>
+          <span className="warn">{t('Web Serial indisponible : utilisez Chrome ou Edge en HTTPS/localhost.')}</span>
         ) : (
           welcome && <span className="muted">{welcome}</span>
         )}

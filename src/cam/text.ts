@@ -1,5 +1,4 @@
-import * as opentype from 'opentype.js'
-import { FONT_DATA } from './fonts'
+import type * as opentype from 'opentype.js'
 import type { Point } from './types'
 
 export const FONTS = [
@@ -10,16 +9,52 @@ export const FONTS = [
   { id: 'pacifico400', label: 'Pacifico (écriture)' },
 ]
 
+// Les polices (~320 Ko) et opentype.js ne sont charges qu'au premier besoin :
+// le demarrage de l'application n'en depend plus.
+interface FontLib {
+  parse: typeof opentype.parse
+  data: Record<string, string>
+}
+let lib: FontLib | null = null
+let loading: Promise<void> | null = null
+const listeners = new Set<() => void>()
+
+/** Charge les polices (une seule fois). */
+export function loadFonts(): Promise<void> {
+  if (!loading) {
+    loading = Promise.all([import('opentype.js'), import('./fonts')]).then(([ot, fonts]) => {
+      lib = { parse: ot.parse, data: fonts.FONT_DATA }
+      outlineCache.clear()
+      for (const fn of listeners) fn()
+    })
+    loading.catch(() => {
+      loading = null
+    })
+  }
+  return loading
+}
+
+export function fontsReady(): boolean {
+  return lib !== null
+}
+
+/** Rappel quand les polices sont pretes (pour recalculer les textes). */
+export function onFontsReady(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
 const fontCache: Record<string, opentype.Font> = {}
 const outlineCache = new Map<string, Point[][]>()
 
-function getFont(id: string): opentype.Font {
-  const key = FONT_DATA[id] ? id : 'roboto700'
+function getFont(id: string): opentype.Font | null {
+  if (!lib) return null
+  const key = lib.data[id] ? id : 'roboto700'
   if (!fontCache[key]) {
-    const binary = atob(FONT_DATA[key])
+    const binary = atob(lib.data[key])
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    fontCache[key] = opentype.parse(bytes.buffer)
+    fontCache[key] = lib.parse(bytes.buffer)
   }
   return fontCache[key]
 }
@@ -31,6 +66,11 @@ export function textLoops(text: string, fontId: string, size: number): Point[][]
   if (cached) return cached
 
   const font = getFont(fontId)
+  if (!font) {
+    // Pas encore chargees : on lance le chargement, les textes seront recalcules.
+    void loadFonts()
+    return []
+  }
   const lineHeight = size * 1.2
   const loops: Point[][] = []
 

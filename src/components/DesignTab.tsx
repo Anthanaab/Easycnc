@@ -34,6 +34,8 @@ function NumberField({
 
 export function DesignTab() {
   const shapes = useCamStore((s) => s.shapes)
+  // Textes vides tant que les polices chargent : export bloque pour ne pas les perdre.
+  const fontsPending = useCamStore((s) => !s.fontsLoaded && s.shapes.some((shape) => shape.kind === 'text' && shape.enabled))
   const tabs = useCamStore((s) => s.tabs)
   const surfacing = useCamStore((s) => s.surfacing)
   const setTabs = useCamStore((s) => s.setTabs)
@@ -284,10 +286,10 @@ export function DesignTab() {
             </div>
           )}
           <div className="stream-controls">
-            <button className="btn primary" disabled={!result.paths.length} onClick={load}>
-              {t('Charger dans Pilotage')}
+            <button className="btn primary" disabled={!result.paths.length || fontsPending} onClick={load}>
+              {fontsPending ? t('Chargement des polices…') : t('Charger dans Pilotage')}
             </button>
-            <button className="btn" disabled={!result.paths.length} onClick={download}>
+            <button className="btn" disabled={!result.paths.length || fontsPending} onClick={download}>
               {t('Télécharger .nc')}
             </button>
           </div>

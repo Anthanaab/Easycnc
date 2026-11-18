@@ -63,6 +63,7 @@ export function LaserTab() {
   const addLaserPreset = useCamStore((s) => s.addLaserPreset)
   const removeLaserPreset = useCamStore((s) => s.removeLaserPreset)
   const selectedIds = useCamStore((s) => s.selectedIds)
+  const fontsPending = useCamStore((s) => !s.fontsLoaded && s.shapes.some((shape) => shape.kind === 'text' && shape.enabled))
 
   const params = useStore((s) => s.params)
   const setParams = useStore((s) => s.setParams)
@@ -567,11 +568,11 @@ export function LaserTab() {
             <button className="btn" disabled={!combined.paths.length} onClick={frame}>
               {t('Cadrer')}
             </button>
-            <button className="btn primary" disabled={!combined.paths.length} onClick={load}>
-              {t('Charger dans Pilotage')}
+            <button className="btn primary" disabled={!combined.paths.length || fontsPending} onClick={load}>
+              {fontsPending ? t('Chargement des polices…') : t('Charger dans Pilotage')}
             </button>
           </div>
-          <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={!combined.paths.length} onClick={download}>
+          <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={!combined.paths.length || fontsPending} onClick={download}>
             {t('Télécharger .nc')}
           </button>
           <p className="notes">{t('Opérations laser sur les formes (contour / remplissage) dans l\'onglet Conception 2D. Le cadrage trace le rectangle à faible puissance pour positionner la pièce.')}</p>

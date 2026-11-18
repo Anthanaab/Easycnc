@@ -11,6 +11,7 @@ import { MachinePanel } from './components/MachinePanel'
 import { OffsetsPanel } from './components/OffsetsPanel'
 import { OverridesPanel } from './components/OverridesPanel'
 import { PcbTab } from './components/PcbTab'
+import { ProgramPauseCard } from './components/ProgramPauseCard'
 import { ProbePanel } from './components/ProbePanel'
 import { ProjectsModal } from './components/ProjectsModal'
 import { ReliefTab } from './components/ReliefTab'
@@ -159,6 +160,7 @@ export function App() {
         </main>
       )}
 
+      <ProgramPauseCard />
       {modal === 'projects' && <ProjectsModal />}
       {modal === 'tutorial' && <TutorialModal />}
     </div>

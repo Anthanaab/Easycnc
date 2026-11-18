@@ -114,7 +114,7 @@ export function ShapeInspector() {
               </option>
             ))}
           </select>
-          <input type="number" min={4} step={1} value={size} onChange={(e) => setSize(Number(e.target.value))} title="Hauteur (mm)" />
+          <input type="number" min={4} step={1} value={size} onChange={(e) => setSize(Number(e.target.value))} title={t('Hauteur (mm)')} />
           <button className="btn" onClick={() => addTextShape(text, font, size)}>
             {t('Ajouter')}
           </button>

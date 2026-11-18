@@ -19,7 +19,7 @@ export function OffsetsPanel() {
         </button>
       </div>
 
-      <div className="parser-state" title="État modal courant [GC]">
+      <div className="parser-state" title={t('État modal courant [GC]')}>
         {parserState ?? '—'}
       </div>
 

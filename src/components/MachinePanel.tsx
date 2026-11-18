@@ -203,7 +203,7 @@ export function MachinePanel() {
 
       <div className="params-head">
         <h3>{t('Paramètres de coupe')}</h3>
-        <button className="btn tiny" onClick={recompute} title="Recalculer depuis machine + matériau + fraise">
+        <button className="btn tiny" onClick={recompute} title={t('Recalculer depuis machine + matériau + fraise')}>
           {t('Recalculer')}
         </button>
       </div>
