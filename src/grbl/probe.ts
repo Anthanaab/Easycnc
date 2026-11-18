@@ -143,3 +143,66 @@ export async function probeCorner(
     }
   }
 }
+
+export interface ToolsetterOptions {
+  /** Machine referencee : les coordonnees G53 du capteur n'ont de sens qu'apres $H. */
+  homed: boolean
+  /** Z machine du haut de course (espace GRBL negatif : environ -1). */
+  topZ: number
+}
+
+/**
+ * Mesure la longueur de l'outil sur un capteur fixe (toolsetter) :
+ * monte en haut de course, va au-dessus du capteur (G53), palpe vite puis
+ * lentement, remonte. Renvoie le Z MACHINE du contact.
+ */
+export async function measureTool(
+  client: GrblClient,
+  probe: ProbeSettings,
+  options: ToolsetterOptions,
+  log: (key: string, params?: Record<string, string | number>) => void,
+): Promise<number> {
+  checkSettings(probe)
+  const x = probe.toolsetterX
+  const y = probe.toolsetterY
+  const depth = probe.toolsetterDepth ?? 0
+  if (!options.homed) throw new Error('Machine non referencee ($H) : position du capteur inconnue')
+  if (x === undefined || y === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error('Position du capteur non definie')
+  }
+  if (!(depth > 0 && depth <= 200)) throw new Error('Course de palpage du capteur invalide (1-200 mm)')
+  const f = (v: number) => v.toFixed(3)
+  let contact = Number.NaN
+  try {
+    await client.send('G21')
+    await client.send('G90')
+    log('Mesure d’outil : montée puis déplacement au-dessus du capteur…')
+    // Toujours monter avant tout deplacement XY (jamais de deplacement a basse altitude).
+    await client.send(`G53 G0 Z${f(options.topZ)}`)
+    await client.send(`G53 G0 X${f(x)} Y${f(y)}`)
+    await client.send('G91')
+    client.clearLastProbe()
+    await client.send(`G38.2 Z-${f(depth)} F${Math.round(probe.fast)}`)
+    await client.send('G0 Z2')
+    await sleep(150)
+    client.clearLastProbe()
+    await client.send(`G38.2 Z-4 F${Math.round(probe.feed)}`)
+    const result = client.lastProbe
+    if (!result?.ok) throw new Error('Mesure d’outil sans contact')
+    contact = result.pos.z
+  } finally {
+    try {
+      await client.send('G90')
+      await client.send(`G53 G0 Z${f(options.topZ)}`)
+    } catch {
+      /* ignore */
+    }
+  }
+  log('Contact capteur à Z machine {z}', { z: contact.toFixed(3) })
+  return contact
+}
+
+/** Correction de longueur d'outil (G43.1) : nouvel outil plus long -> contact plus haut -> correction positive. */
+export function toolLengthOffset(referenceZ: number, newZ: number): number {
+  return newZ - referenceZ
+}

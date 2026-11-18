@@ -5,7 +5,7 @@ import { MATERIALS, findMaterial } from '../data/materials'
 import { autoParams, type CutParams } from '../data/params'
 import type { Bit, MachineProfile, Material, ProbeSettings } from '../data/types'
 import { GrblClient, MAX_LINE_CHARS, grblLineLength } from '../grbl/GrblClient'
-import { probeCorner, probeZ, type Corner } from '../grbl/probe'
+import { measureTool, probeCorner, probeZ, toolLengthOffset, type Corner } from '../grbl/probe'
 import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
@@ -52,6 +52,10 @@ export interface AppState {
   savedSettings: Record<string, Record<number, string>>
   parserState: string | null
   offsets: Record<string, Vec3>
+  /** Correction de longueur d'outil active (G43.1), rapport [TLO:] de $#. */
+  tlo: number | null
+  /** Z machine du contact de l'outil de reference sur le capteur. */
+  toolRef: number | null
   jogStep: number
   jogFeed: number
   dryRun: boolean
@@ -97,6 +101,9 @@ export interface AppState {
   importSettings: (json: string) => void
   runProbe: () => Promise<void>
   runCornerProbe: (corner: Corner) => Promise<void>
+  measureReferenceTool: () => Promise<void>
+  measureNewTool: () => Promise<void>
+  clearToolOffset: () => void
   setMachine: (id: string) => void
   setMaterial: (id: string) => void
   setBit: (id: string) => void
@@ -151,6 +158,27 @@ function guard(): boolean {
 // GRBL n'envoie WCO que periodiquement (tous les 10-30 rapports) : on garde le dernier.
 let lastWco: Vec3 | null = null
 
+/** Mesure sur le capteur fixe ; null (et message) si impossible. */
+async function toolsetterMeasure(): Promise<number | null> {
+  if (!guard()) return null
+  const state = useStore.getState()
+  if (state.status?.state !== 'Idle') {
+    pushLog('error', tr('Machine non prête (attendez Idle)'))
+    return null
+  }
+  const machine = state.machines.find((m) => m.id === state.machineId) ?? state.machines[0]
+  const travelZ = travelOf(state.settings, machine.area).z
+  const mz = state.status?.mpos?.z ?? 0
+  // Haut de course : espace GRBL negatif [-course, 0] par defaut, sinon [0, course].
+  const topZ = mz <= 0.5 ? -1 : travelZ - 1
+  try {
+    return await measureTool(client, state.probe, { homed: state.homed, topZ }, (key, params) => pushLog('info', tr(key, params)))
+  } catch (error) {
+    pushLog('error', tr('Mesure d’outil échouée : {msg}', { msg: describeGrblCode(message(error)) }))
+    return null
+  }
+}
+
 // Jog continu en cours (annule si la fenetre perd le focus).
 let continuousJog = false
 
@@ -180,6 +208,8 @@ export const useStore = create<AppState>((set, get) => ({
   savedSettings: loadJSON('savedSettings', {}),
   parserState: null,
   offsets: {},
+  tlo: null,
+  toolRef: loadJSON<number | null>('toolRef.' + initialMachineId, null),
   jogStep: 1,
   jogFeed: 500,
   dryRun: false,
@@ -433,6 +463,47 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  measureReferenceTool: async () => {
+    const contact = await toolsetterMeasure()
+    if (contact === null) return
+    set({ toolRef: contact })
+    saveJSON('toolRef.' + get().machineId, contact)
+    // L'outil de reference definit la longueur nulle : pas de correction active.
+    await client.send('G49').catch(() => undefined)
+    void client.send('$#').catch(() => undefined)
+    pushLog('info', tr('Outil de référence mesuré (Z machine {z}). Définissez Z0 avec cet outil.', { z: contact.toFixed(3) }))
+  },
+
+  measureNewTool: async () => {
+    const reference = get().toolRef
+    if (reference === null) {
+      pushLog('error', tr("Mesurez d'abord l'outil de référence"))
+      return
+    }
+    const contact = await toolsetterMeasure()
+    if (contact === null) return
+    const offset = toolLengthOffset(reference, contact)
+    if (Math.abs(offset) > 50) {
+      pushLog('error', tr('Écart de longueur {mm} mm invraisemblable : correction non appliquée', { mm: offset.toFixed(3) }))
+      return
+    }
+    try {
+      await client.send(`G43.1 Z${offset.toFixed(3)}`)
+      void client.send('$#').catch(() => undefined)
+      pushLog('info', tr('Correction de longueur appliquée : G43.1 Z{mm}', { mm: offset.toFixed(3) }))
+    } catch (error) {
+      pushLog('error', describeGrblCode(message(error)))
+    }
+  },
+
+  clearToolOffset: () => {
+    if (!guard()) return
+    client
+      .send('G49')
+      .then(() => client.send('$#'))
+      .catch((error) => pushLog('error', describeGrblCode(message(error))))
+  },
+
   runCornerProbe: async (corner) => {
     if (!guard()) return
     if (get().status?.state !== 'Idle') {
@@ -682,6 +753,9 @@ client.on('feedback', (feedback) => {
     if (!key) return
     if (key === 'GC') {
       useStore.setState({ parserState: value })
+    } else if (key === 'TLO') {
+      const tlo = Number(value)
+      if (Number.isFinite(tlo)) useStore.setState({ tlo })
     } else if (key.startsWith('G5') || key === 'G92') {
       const [x, y, z] = value.split(',').map(Number)
       if (![x, y, z].some(Number.isNaN)) {

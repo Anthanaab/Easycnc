@@ -80,3 +80,36 @@ describe('palpage de coin XYZ', () => {
     await expect(probeCorner(client, { ...probe, xyTravel: 200 }, { corner: 'front-left', toolDiameter: 6 }, noop)).rejects.toThrow()
   })
 })
+
+import { measureTool, toolLengthOffset } from '../grbl/probe'
+
+describe("mesure d'outil sur capteur fixe", () => {
+  const settings = { ...probe, toolsetterX: -280, toolsetterY: -10, toolsetterDepth: 40 }
+
+  it('monte en haut de course AVANT de bouger en XY, palpe, remonte', async () => {
+    const { client, sent } = fakeClient()
+    ;(client as unknown as { send: (l: string) => Promise<void> }).send = (async (line: string) => {
+      sent.push(line)
+      if (line.startsWith('G38.2')) (client as unknown as { lastProbe: unknown }).lastProbe = { pos: { x: -280, y: -10, z: -31.5 }, ok: true }
+    }) as never
+    const z = await measureTool(client, settings, { homed: true, topZ: -1 }, noop)
+    expect(z).toBe(-31.5)
+    const up = sent.indexOf('G53 G0 Z-1.000')
+    const xy = sent.indexOf('G53 G0 X-280.000 Y-10.000')
+    expect(up).toBeGreaterThanOrEqual(0)
+    expect(xy).toBeGreaterThan(up)
+    expect(sent.slice(xy + 1)).toContain('G38.2 Z-40.000 F150')
+    expect(sent[sent.length - 1]).toBe('G53 G0 Z-1.000')
+  })
+
+  it('refuse sans homing ou sans position de capteur', async () => {
+    const { client } = fakeClient()
+    await expect(measureTool(client, settings, { homed: false, topZ: -1 }, noop)).rejects.toThrow(/referencee/)
+    await expect(measureTool(client, probe, { homed: true, topZ: -1 }, noop)).rejects.toThrow(/capteur/)
+  })
+
+  it('outil plus long : contact plus haut, correction positive', () => {
+    expect(toolLengthOffset(-31.5, -29.0)).toBeCloseTo(2.5)
+    expect(toolLengthOffset(-31.5, -33.0)).toBeCloseTo(-1.5)
+  })
+})

@@ -20,6 +20,11 @@ export interface ProbeSettings {
   xyWall?: number
   /** Palpage de coin : distance de degagement pour contourner la plaque (mm). */
   xyTravel?: number
+  /** Capteur de longueur d'outil fixe (coordonnees MACHINE, G53). */
+  toolsetterX?: number
+  toolsetterY?: number
+  /** Course max de palpage sur le capteur depuis le haut de la machine (mm). */
+  toolsetterDepth?: number
 }
 
 export interface MachineProfile {

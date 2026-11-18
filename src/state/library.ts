@@ -42,6 +42,8 @@ export function createLibraryActions(set: Set, get: Get, pushLog: Log): LibraryA
         machineId: id,
         baudRate: machine.baud,
         probe,
+        // Reference d'outil propre a chaque machine (capteur different).
+        toolRef: loadJSON<number | null>('toolRef.' + id, null),
         params: autoParams(machine, findMaterial(get().materialId), bitById(get().bits, get().bitId)),
       })
       saveJSON('machineId', id)

@@ -14,6 +14,8 @@ export function ProgramPauseCard() {
   const stopStream = useStore((s) => s.stopStream)
   const runProbe = useStore((s) => s.runProbe)
   const goToWorkZero = useStore((s) => s.goToWorkZero)
+  const measureNewTool = useStore((s) => s.measureNewTool)
+  const toolsetterReady = useStore((s) => s.toolRef !== null && s.homed && s.probe.toolsetterX !== undefined)
   const setTab = useUiStore((s) => s.setTab)
   const [probing, setProbing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -58,6 +60,23 @@ export function ProgramPauseCard() {
             <button className="btn" onClick={() => setTab('pilotage')}>
               {t('Jog (Pilotage)')}
             </button>
+            {toolsetterReady && (
+              <button
+                className="btn"
+                disabled={probing}
+                onClick={async () => {
+                  setProbing(true)
+                  try {
+                    await measureNewTool()
+                  } finally {
+                    setProbing(false)
+                  }
+                }}
+                title={t('Mesure sur le capteur fixe et correction G43.1 : pas besoin de re-palper la pièce')}
+              >
+                {t('Mesurer l\'outil (capteur)')}
+              </button>
+            )}
             <button className="btn" disabled={probing} onClick={() => void probe()}>
               {probing ? t('Palpage…') : t('Palper Z0')}
             </button>
