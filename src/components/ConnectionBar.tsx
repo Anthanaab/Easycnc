@@ -18,6 +18,8 @@ export function ConnectionBar() {
   const unlock = useStore((s) => s.unlock)
   const softReset = useStore((s) => s.softReset)
   const openModal = useUiStore((s) => s.openModal)
+  const shopMode = useUiStore((s) => s.shopMode)
+  const setShopMode = useUiStore((s) => s.setShopMode)
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
   const language = useUiStore((s) => s.language)
@@ -83,6 +85,9 @@ export function ConnectionBar() {
       <div className="topbar-group">
         <button className="btn" onClick={() => openModal('projects')}>
           {t('top.projects')}
+        </button>
+        <button className="btn" title={t('Mode atelier (tablette, gros boutons)')} onClick={() => setShopMode(!shopMode)}>
+          {shopMode ? t('Interface complète') : t('Atelier')}
         </button>
         <button className="btn" onClick={() => openModal('tutorial')}>
           {t('top.help')}

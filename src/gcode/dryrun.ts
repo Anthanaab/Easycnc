@@ -13,11 +13,21 @@ const NON_WORK_Z = /G0*(?:10|92(?:\.\d)?|53|28(?:\.\d)?|30(?:\.\d)?|38\.\d|4)(?!
  * mouvements Z absolus remontes de safeZ (l'outil passe au-dessus de la piece).
  */
 export function raiseZ(lines: string[], safeZ: number): string[] {
+  return raiseZWithMap(lines, safeZ).lines
+}
+
+/**
+ * Comme raiseZ, avec pour chaque ligne produite l'index de la ligne d'origine
+ * (certaines lignes disparaissent : broche, vitesse) — pour l'avancement exact.
+ */
+export function raiseZWithMap(lines: string[], safeZ: number): { lines: string[]; origin: number[] } {
   let absolute = true
   let metric = true
   const out: string[] = []
+  const origin: number[] = []
 
-  for (const raw of lines) {
+  for (let index = 0; index < lines.length; index++) {
+    const raw = lines[index]
     const { code, comment } = splitComment(raw.trim())
     if (!code) continue
 
@@ -38,8 +48,11 @@ export function raiseZ(lines: string[], safeZ: number): string[] {
     }
 
     // Le commentaire des pauses M0 est conserve (message de changement d'outil).
-    if (cleaned) out.push(comment ? `${cleaned} (${comment})` : cleaned)
+    if (cleaned) {
+      out.push(comment ? `${cleaned} (${comment})` : cleaned)
+      origin.push(index)
+    }
   }
 
-  return out
+  return { lines: out, origin }
 }

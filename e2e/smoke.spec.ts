@@ -51,3 +51,12 @@ test('demarrage impossible sans connexion', async ({ page }) => {
   await page.getByRole('button', { name: 'Charger dans Pilotage' }).click()
   await expect(page.getByRole('button', { name: /Démarrer/ })).toBeDisabled()
 })
+
+test('mode atelier : bascule et retour', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Atelier', exact: true }).click()
+  await expect(page.locator('.shop')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Démarrer/ })).toBeDisabled()
+  await page.getByRole('button', { name: 'Quitter le mode atelier' }).click()
+  await expect(page.locator('.tabs')).toBeVisible()
+})

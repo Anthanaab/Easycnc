@@ -27,6 +27,9 @@ interface UiState {
   modal: ModalId
   theme: Theme
   language: Language
+  /** Mode atelier : interface simplifiee a gros boutons (tablette pres de la machine). */
+  shopMode: boolean
+  setShopMode: (shopMode: boolean) => void
   setTab: (tab: TabId) => void
   openModal: (modal: ModalId) => void
   closeModal: () => void
@@ -39,6 +42,15 @@ export const useUiStore = create<UiState>((set) => ({
   modal: 'none',
   theme: initialTheme,
   language: stored<Language>('language', 'fr'),
+  shopMode: stored<'0' | '1'>('shopMode', '0') === '1',
+  setShopMode: (shopMode) => {
+    try {
+      localStorage.setItem('shopMode', shopMode ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+    set({ shopMode })
+  },
   setTab: (tab) => set({ tab }),
   openModal: (modal) => set({ modal }),
   closeModal: () => set({ modal: 'none' }),

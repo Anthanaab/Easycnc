@@ -8,7 +8,7 @@ import { GrblClient, MAX_LINE_CHARS, grblLineLength } from '../grbl/GrblClient'
 import { measureTool, probeCorner, probeZ, toolLengthOffset, type Corner } from '../grbl/probe'
 import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
-import { raiseZ } from '../gcode/dryrun'
+import { raiseZWithMap } from '../gcode/dryrun'
 import { resumeProgram } from '../gcode/resume'
 import { detectJobType, parseGcode, type Toolpath } from '../gcode/parser'
 import { parseGcodeInWorker } from '../cam/workerClient'
@@ -39,6 +39,8 @@ export interface StreamInfo {
   startedAt?: number
   /** Decalage entre lignes envoyees et lignes du fichier (reprise a une ligne). */
   lineOffset?: number
+  /** Ligne du fichier correspondant a chaque ligne envoyee (essai a blanc, reprise). */
+  lineMap?: Int32Array
 }
 
 export interface AppState {
@@ -610,12 +612,23 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
     let resumeOffset = 0
-    let lines = dryRun ? raiseZ(programLines(rawGcode), params.safeZ) : programLines(rawGcode)
+    const original = programLines(rawGcode)
+    // Correspondance ligne envoyee -> ligne du fichier, pour l'avancement affiche.
+    let lines = original
+    let origin = original.map((_, i) => i)
+    if (dryRun) {
+      const raised = raiseZWithMap(original, params.safeZ)
+      lines = raised.lines
+      origin = raised.origin
+    }
     if (fromLine && fromLine > 1) {
       try {
         const plan = resumeProgram(lines, fromLine - 1, { safeZ: params.safeZ, plunge: params.plunge })
         lines = plan.lines
         resumeOffset = fromLine - 1 - plan.preamble
+        // Preambule de reprise : rattache a la ligne de reprise.
+        const startOrigin = origin[fromLine - 1] ?? 0
+        origin = [...new Array<number>(plan.preamble).fill(startOrigin), ...origin.slice(fromLine - 1)]
       } catch (error) {
         pushLog('error', message(error))
         return
@@ -655,7 +668,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
     streamer.loadLines(lines)
-    set((state) => ({ stream: { ...state.stream, done: 0, startedAt: Date.now(), lineOffset: resumeOffset } }))
+    set((state) => ({ stream: { ...state.stream, done: 0, startedAt: Date.now(), lineOffset: resumeOffset, lineMap: Int32Array.from(origin) } }))
     if (dryRun) pushLog('info', tr('Essai à blanc : Z +{z} mm, broche coupée', { z: params.safeZ }))
     pushLog('info', tr('Demarrage du programme'))
     const state = get()

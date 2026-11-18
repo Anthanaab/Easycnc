@@ -158,3 +158,13 @@ describe('detectJobType', () => {
     expect(detectJobType('G0 X0 Y0\n')).toBe('mill')
   })
 })
+
+import { raiseZWithMap } from '../gcode/dryrun'
+
+describe('essai a blanc : correspondance des lignes', () => {
+  it('chaque ligne produite pointe vers sa ligne d\'origine', () => {
+    const { lines, origin } = raiseZWithMap(['G90', 'M3 S12000', 'G4 P3', 'G1 Z-1 F100', 'M5', 'G1 X10'], 5)
+    expect(lines).toEqual(['G90', 'G4 P3', 'G1 Z4.000 F100', 'G1 X10'])
+    expect(origin).toEqual([0, 2, 3, 5])
+  })
+})

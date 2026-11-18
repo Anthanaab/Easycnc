@@ -13,6 +13,7 @@ import { OverridesPanel } from './components/OverridesPanel'
 import { HistoryModal } from './components/HistoryModal'
 import { PcbTab } from './components/PcbTab'
 import { ProgramPauseCard } from './components/ProgramPauseCard'
+import { ShopView } from './components/ShopView'
 import { ProbePanel } from './components/ProbePanel'
 import { ProjectsModal } from './components/ProjectsModal'
 import { ReliefTab } from './components/ReliefTab'
@@ -41,6 +42,7 @@ export function App() {
   const tab = useUiStore((s) => s.tab)
   const setTab = useUiStore((s) => s.setTab)
   const modal = useUiStore((s) => s.modal)
+  const shopMode = useUiStore((s) => s.shopMode)
   const t = useT()
 
   useEffect(() => {
@@ -101,6 +103,10 @@ export function App() {
     <div className="app">
       <ConnectionBar />
       <UpdateBanner />
+      {shopMode ? (
+        <ShopView />
+      ) : (
+        <>
       <nav className="tabs">
         {TABS.map((item) => (
           <button
@@ -163,6 +169,9 @@ export function App() {
             </p>
           </section>
         </main>
+      )}
+
+        </>
       )}
 
       <ProgramPauseCard />

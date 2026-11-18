@@ -31,7 +31,14 @@ export function ToolpathViewer() {
   const refs = useRef<SceneRefs | null>(null)
   const toolpath = useStore((s) => s.toolpath)
   const streamState = useStore((s) => s.stream.state)
-  const executedLine = useStore((s) => (s.stream.done ?? 0) + (s.stream.lineOffset ?? 0))
+  // Ligne du fichier atteinte : via la table de correspondance (essai a blanc,
+  // reprise), sinon simple decalage.
+  const executedLine = useStore((s) => {
+    const done = s.stream.done ?? 0
+    const map = s.stream.lineMap
+    if (map && map.length) return done >= map.length ? map[map.length - 1] + 1 : map[done]
+    return done + (s.stream.lineOffset ?? 0)
+  })
   const status = useStore((s) => s.status)
   const offsets = useStore((s) => s.offsets)
   const stockSetting = useCamStore((s) => s.stock)
@@ -59,7 +66,14 @@ export function ToolpathViewer() {
 
     const grid = buildBedGrid(machine?.area.x ?? 300, machine?.area.y ?? 180)
     scene.add(grid)
+    // Repere d'origine de travail (X0 Y0 Z0) : axes + etiquettes toujours lisibles.
     scene.add(new THREE.AxesHelper(30))
+    const labels = new THREE.Group()
+    labels.add(textSprite('X', '#ff5a5a', [36, 0, 0]))
+    labels.add(textSprite('Y', '#5aff7a', [0, 36, 0]))
+    labels.add(textSprite('Z', '#5a9cff', [0, 0, 36]))
+    labels.add(textSprite('X0 Y0', '#e6edf3', [-7, -7, 0], 0.7))
+    scene.add(labels)
 
     const cut = new THREE.LineSegments(
       new THREE.BufferGeometry(),
@@ -139,6 +153,13 @@ export function ToolpathViewer() {
       ;(tool.material as THREE.Material).dispose()
       disposeGroup(stock)
       disposeBedGrid(grid)
+      labels.traverse((object) => {
+        const sprite = object as THREE.Sprite
+        if (sprite.isSprite) {
+          sprite.material.map?.dispose()
+          sprite.material.dispose()
+        }
+      })
       renderer.dispose()
       container.removeChild(renderer.domElement)
       refs.current = null
@@ -348,4 +369,25 @@ function updateStock(group: THREE.Group, stock: StockSettings): void {
   )
   edges.position.copy(mesh.position)
   group.add(mesh, edges)
+}
+
+/** Etiquette texte (sprite) toujours face a la camera et au premier plan. */
+function textSprite(text: string, color: string, position: [number, number, number], scale = 1): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 64
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.font = 'bold 40px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = color
+    ctx.fillText(text, 64, 32)
+  }
+  const material = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true })
+  const sprite = new THREE.Sprite(material)
+  sprite.position.set(...position)
+  sprite.scale.set(16 * scale, 8 * scale, 1)
+  sprite.renderOrder = 2
+  return sprite
 }

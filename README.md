@@ -26,7 +26,13 @@ FAO (fraisage / laser / PCB), aperçu 3D et envoi du G-code.
   isolation, perçage, détourage, **dégagement cuivre**, **nivellement automatique** du plateau.
 - **Relief 3D** : depuis une image niveaux de gris, ébauche + finitions, simulation.
 - **Projets** : sauvegarde/chargement/export JSON, autosave + miniatures ; **tutoriel** intégré.
-- **Interface** : thème clair/sombre, **FR/EN**, PWA hors-ligne, raccourcis clavier.
+- **Interface** : thème clair/sombre, **FR/EN**, PWA hors-ligne, raccourcis clavier,
+  **mode atelier** (tablette : grosse position, gros boutons, appui long = jog continu).
+- **Suivi** : parcours usiné surligné, temps restant, notifications, anti-veille,
+  **historique des programmes** (export CSV), **projets sur le serveur**.
+- **Usinage avancé** : arcs G2/G3 sur toutes les courbes, ordre d'usinage (détourage
+  en dernier), **nivellement** (fraisage et PCB), **mesure d'outil sur capteur fixe**
+  (G43.1), palpage de coin XYZ, reprise à une ligne.
 - **Mises à jour** : bandeau « nouvelle version » (jamais de rechargement pendant un
   programme) et, sur le serveur Proxmox, **mise à jour depuis l'interface**
   (Réglages GRBL → Mise à jour).
