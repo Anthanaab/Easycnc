@@ -46,7 +46,8 @@ echo "==> Utilisateur de service 'easycnc' (build et mises a jour sans root)"
 if ! id easycnc >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/easycnc --create-home --shell /usr/sbin/nologin easycnc
 fi
-as_app() { runuser -u easycnc -- "$@"; }
+# HOME explicite : sinon npm/git peuvent tenter d'ecrire dans /root (EACCES).
+as_app() { runuser -u easycnc -- env HOME=/var/lib/easycnc "$@"; }
 
 echo "==> Recuperation du depot"
 mkdir -p "$APP_DIR"
@@ -156,12 +157,26 @@ echo "==> Mise a jour du systeme"
 apt-get update
 apt-get -y upgrade
 echo "==> Mise a jour d'EasyCNC (et de sa configuration)"
-runuser -u easycnc -- git -C $APP_DIR pull --ff-only origin $BRANCH
+runuser -u easycnc -- env HOME=/var/lib/easycnc git -C $APP_DIR pull --ff-only origin $BRANCH
 bash $APP_DIR/deploy/proxmox/install.sh "$REPO_URL" "$BRANCH"
 UPD
 chmod +x /usr/local/bin/update
 # /usr/bin est toujours dans le PATH (certains conteneurs n'ont pas /usr/local/bin).
 ln -sf /usr/local/bin/update /usr/bin/update
+
+echo "==> Verification du service de mise a jour"
+UPDATER_OK=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsk https://127.0.0.1/api/update/status >/dev/null 2>&1; then UPDATER_OK=1; break; fi
+  sleep 1
+done
+if [ "$UPDATER_OK" = 1 ]; then
+  echo "    OK : la mise a jour depuis l'interface est active."
+else
+  echo "    ATTENTION : /api/update ne repond pas. Diagnostic :" >&2
+  systemctl --no-pager status easycnc-updater >&2 || true
+  journalctl -u easycnc-updater -n 20 --no-pager >&2 || true
+fi
 
 echo
 echo "======================================================"
