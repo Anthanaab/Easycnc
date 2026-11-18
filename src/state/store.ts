@@ -10,9 +10,10 @@ import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
 import { resumeProgram } from '../gcode/resume'
-import { parseGcode, type Toolpath } from '../gcode/parser'
+import { detectJobType, parseGcode, type Toolpath } from '../gcode/parser'
 import { createLibraryActions } from './library'
 import { jobLimits, travelOf } from './limits'
+import { notifyJob, requestJobNotifications } from './notify'
 import { loadJSON, saveJSON } from './persist'
 import { GcodeStreamer, parsePause, programLines, splitComment, type PauseReason, type StreamState } from '../gcode/streamer'
 import { describeGrblCode } from '../grbl/codes'
@@ -30,6 +31,12 @@ export interface StreamInfo {
   total: number
   pauseReason?: PauseReason
   pauseMessage?: string
+  /** Lignes acquittees par GRBL (avancement reel, a ~15 blocs pres). */
+  done?: number
+  /** Debut du programme (ms) pour le temps ecoule / restant. */
+  startedAt?: number
+  /** Decalage entre lignes envoyees et lignes du fichier (reprise a une ligne). */
+  lineOffset?: number
 }
 
 export interface AppState {
@@ -80,6 +87,7 @@ export interface AppState {
   unlock: () => void
   softReset: () => void
   setZero: (axes: Array<'X' | 'Y' | 'Z'>) => void
+  goToWorkZero: () => void
   requestSettings: () => void
   readSettings: () => void
   saveSettings: () => void
@@ -103,6 +111,7 @@ export interface AppState {
   updateBit: (id: string, partial: Partial<Bit>) => void
   removeBit: (id: string) => void
   loadFile: (name: string, text: string, jobType?: 'mill' | 'laser') => void
+  setJobType: (jobType: 'mill' | 'laser') => void
   /** fromLine : reprise a cette ligne du programme (1 = debut). */
   startStream: (fromLine?: number) => Promise<void>
   pauseStream: () => void
@@ -307,6 +316,26 @@ export const useStore = create<AppState>((set, get) => ({
       .then(() => client.send('$#'))
       .catch((error) => pushLog('error', message(error)))
   },
+  goToWorkZero: () => {
+    if (!guard()) return
+    const { status, params } = get()
+    if (status?.state !== 'Idle') {
+      pushLog('error', tr('Machine non prête (attendez Idle)'))
+      return
+    }
+    // Monte d'abord (jamais de deplacement XY a basse altitude), puis X0 Y0.
+    const z = Math.max(status.wpos?.z ?? params.safeZ, params.safeZ)
+    void (async () => {
+      try {
+        await client.send('G90')
+        await client.send(`G0 Z${z.toFixed(3)}`)
+        await client.send('G0 X0 Y0')
+      } catch (error) {
+        pushLog('error', describeGrblCode(message(error)))
+      }
+    })()
+  },
+
   requestSettings: () => {
     if (!guard()) return
     client.requestSettings().catch((error) => pushLog('error', message(error)))
@@ -407,7 +436,12 @@ export const useStore = create<AppState>((set, get) => ({
   setJogFeed: (feed) => set({ jogFeed: feed }),
   setDryRun: (dryRun) => set({ dryRun }),
 
-  loadFile: (name, text, jobType = 'mill') => {
+  setJobType: (jobType) => {
+    if (streamer.isRunning || !get().rawGcode) return
+    set({ jobType })
+  },
+
+  loadFile: (name, text, jobType = detectJobType(text)) => {
     if (streamer.isRunning) {
       pushLog('error', tr('Programme en cours : arretez-le avant d\'en charger un autre'))
       return
@@ -426,6 +460,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   startStream: async (fromLine) => {
+    // Pendant le clic (geste utilisateur) : autorisation des notifications de fin.
+    requestJobNotifications()
     const { connected, dryRun, rawGcode, params, jobType, settings } = get()
     if (!connected) {
       pushLog('error', tr('Non connecte'))
@@ -450,10 +486,13 @@ export const useStore = create<AppState>((set, get) => ({
         return
       }
     }
+    let resumeOffset = 0
     let lines = dryRun ? raiseZ(programLines(rawGcode), params.safeZ) : programLines(rawGcode)
     if (fromLine && fromLine > 1) {
       try {
-        lines = resumeProgram(lines, fromLine - 1, { safeZ: params.safeZ, plunge: params.plunge }).lines
+        const plan = resumeProgram(lines, fromLine - 1, { safeZ: params.safeZ, plunge: params.plunge })
+        lines = plan.lines
+        resumeOffset = fromLine - 1 - plan.preamble
       } catch (error) {
         pushLog('error', message(error))
         return
@@ -493,6 +532,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
     streamer.loadLines(lines)
+    set((state) => ({ stream: { ...state.stream, done: 0, startedAt: Date.now(), lineOffset: resumeOffset } }))
     if (dryRun) pushLog('info', tr('Essai à blanc : Z +{z} mm, broche coupée', { z: params.safeZ }))
     pushLog('info', tr('Demarrage du programme'))
     await streamer.start()
@@ -520,9 +560,18 @@ export const streamer = new GcodeStreamer(client, {
     const pauseMessage = text || tr('Pause programme (M0)')
     useStore.setState((state) => ({ stream: { ...state.stream, pauseMessage } }))
     pushLog('info', tr('Pause programme : {msg} — machine arrêtée, commandes manuelles autorisées. « Reprendre » pour continuer.', { msg: pauseMessage }))
+    notifyJob(tr('Pause programme (M0)'), pauseMessage)
   },
-  onDone: () => pushLog('info', tr('Programme termine')),
-  onError: (error) => pushLog('error', tr('Erreur programme: {msg} — machine arrêtée (feed hold + reset)', { msg: describeGrblCode(error.message) })),
+  onDone: () => {
+    useStore.setState((state) => ({ stream: { ...state.stream, done: state.stream.total } }))
+    pushLog('info', tr('Programme termine'))
+    notifyJob(tr('Programme terminé'), useStore.getState().fileName ?? '')
+  },
+  onError: (error) => {
+    const msg = describeGrblCode(error.message)
+    pushLog('error', tr('Erreur programme: {msg} — machine arrêtée (feed hold + reset)', { msg }))
+    notifyJob(tr('Programme arrêté sur erreur'), msg)
+  },
 })
 
 if (typeof window !== 'undefined') {
@@ -570,7 +619,12 @@ client.on('status', (status) => {
   } else if (wco && !merged.wpos && merged.mpos) {
     merged.wpos = { x: merged.mpos.x - wco.x, y: merged.mpos.y - wco.y, z: merged.mpos.z - wco.z }
   }
-  useStore.setState({ status: merged, homed: status.homed ?? false })
+  const patch: Partial<AppState> = { status: merged, homed: status.homed ?? false }
+  // Avancement reel du programme, rafraichi au rythme des rapports d'etat (5/s).
+  if (streamer.isRunning && useStore.getState().stream.done !== streamer.acked) {
+    patch.stream = { ...useStore.getState().stream, done: streamer.acked }
+  }
+  useStore.setState(patch)
 })
 client.on('alarm', (line) => pushLog('error', describeGrblCode(line)))
 client.on('error', (error) => pushLog('error', message(error)))

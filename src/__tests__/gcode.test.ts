@@ -144,3 +144,17 @@ describe('estimateMinutes', () => {
     expect(estimate.minutes * 60).toBeLessThan(((2 * Math.PI * 10) / 10) * 1.2 + 2)
   })
 })
+
+import { detectJobType } from '../gcode/parser'
+
+describe('detectJobType', () => {
+  it('reconnait un G-code laser (LightBurn / LaserGRBL)', () => {
+    expect(detectJobType('G21 G90\nM4 S0\nG0 X10 Y10\nG1 X20 S800 F1500\nG1 Y20\nM5\n')).toBe('laser')
+    expect(detectJobType('M3 S0\nG1 X5 Y5 S300 F1000\n')).toBe('laser')
+  })
+
+  it('fraisage par defaut et des qu\'on plonge sous Z0', () => {
+    expect(detectJobType('G21\nM3 S12000\nG0 Z5\nG1 Z-1 F200\nG1 X10 F600\n')).toBe('mill')
+    expect(detectJobType('G0 X0 Y0\n')).toBe('mill')
+  })
+})

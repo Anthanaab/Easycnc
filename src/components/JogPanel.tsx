@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useT } from '../i18n'
 import { useStore } from '../state/store'
 
 const STEPS = [0.01, 0.1, 0.5, 1, 5, 10, 50]
@@ -13,8 +14,10 @@ export function JogPanel() {
   const jogFeed = useStore((s) => s.jogFeed)
   const setJogFeed = useStore((s) => s.setJogFeed)
   const setZero = useStore((s) => s.setZero)
+  const goToWorkZero = useStore((s) => s.goToWorkZero)
   const home = useStore((s) => s.home)
   const jogCancel = useStore((s) => s.jogCancel)
+  const t = useT()
 
   // Pendant un programme (hors pause M0), le jog est interdit.
   const streamBusy = useStore((s) => s.stream.state === 'running' || (s.stream.state === 'paused' && s.stream.pauseReason !== 'program'))
@@ -68,11 +71,11 @@ export function JogPanel() {
 
   return (
     <section className="panel">
-      <h2>Jogging</h2>
+      <h2>{t('Jogging')}</h2>
 
       <div className="jog-controls">
         <label>
-          Pas (mm)
+          {t('Pas (mm)')}
           <select value={jogStep} onChange={(e) => setJogStep(Number(e.target.value))}>
             {STEPS.map((step) => (
               <option key={step} value={step}>
@@ -82,7 +85,7 @@ export function JogPanel() {
           </select>
         </label>
         <label>
-          Avance (mm/min)
+          {t('Avance (mm/min)')}
           <input type="number" min={10} step={10} value={jogFeed} onChange={(e) => setJogFeed(Number(e.target.value))} />
         </label>
       </div>
@@ -100,7 +103,7 @@ export function JogPanel() {
         <button className="btn jog" disabled={disabled} {...hold('X', -1)}>
           X−
         </button>
-        <button className="btn jog" disabled={disabled} onClick={jogCancel} title="Annuler le jog">
+        <button className="btn jog" disabled={disabled} onClick={jogCancel} title={t('Annuler le jog')}>
           ■
         </button>
         <button className="btn jog" disabled={disabled} {...hold('X', 1)}>
@@ -116,7 +119,7 @@ export function JogPanel() {
       </div>
 
       <p className="notes">
-        Maintenir un bouton pour un déplacement continu. Clavier : flèches = X/Y (pas), Page ↑/↓ = Z.
+        {t('Maintenir un bouton pour un déplacement continu. Clavier : flèches = X/Y (pas), Page ↑/↓ = Z.')}
       </p>
 
       <div className="zero-grid">
@@ -127,7 +130,10 @@ export function JogPanel() {
           Z = 0
         </button>
         <button className="btn" disabled={disabled} onClick={() => setZero(['X', 'Y', 'Z'])}>
-          Tout = 0
+          {t('Tout = 0')}
+        </button>
+        <button className="btn" disabled={disabled} onClick={goToWorkZero} title={t('Monte au Z de sécurité puis G0 X0 Y0')} style={{ gridColumn: '1 / -1' }}>
+          {t('→ X0 Y0 (Z sécurité)')}
         </button>
       </div>
     </section>

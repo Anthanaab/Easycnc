@@ -6,6 +6,7 @@ import type { StockSettings } from '../cam/types'
 import type { Toolpath } from '../gcode/parser'
 import { useStore } from '../state/store'
 import { buildBedGrid, disposeBedGrid } from './bedGrid'
+import { RenderLoop } from './renderLoop'
 
 interface SceneRefs {
   renderer: THREE.WebGLRenderer
@@ -14,16 +15,23 @@ interface SceneRefs {
   controls: OrbitControls
   cut: THREE.LineSegments
   rapid: THREE.LineSegments
+  /** Parcours deja execute (pendant un programme). */
+  done: THREE.LineSegments
+  /** Index de ligne de programme de chaque segment de `done`, croissant. */
+  doneLines: Int32Array
   tool: THREE.Mesh
   stock: THREE.Group
   bedGrid: THREE.Group
   center: THREE.Vector3
+  loop: RenderLoop
 }
 
 export function ToolpathViewer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const refs = useRef<SceneRefs | null>(null)
   const toolpath = useStore((s) => s.toolpath)
+  const streamState = useStore((s) => s.stream.state)
+  const executedLine = useStore((s) => (s.stream.done ?? 0) + (s.stream.lineOffset ?? 0))
   const status = useStore((s) => s.status)
   const offsets = useStore((s) => s.offsets)
   const stockSetting = useCamStore((s) => s.stock)
@@ -61,7 +69,13 @@ export function ToolpathViewer() {
       new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({ color: 0xe0803c, transparent: true, opacity: 0.55 }),
     )
-    scene.add(cut, rapid)
+    const done = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xffe066 }),
+    )
+    done.visible = false
+    done.renderOrder = 1
+    scene.add(cut, rapid, done)
 
     const tool = new THREE.Mesh(
       new THREE.SphereGeometry(1.5, 16, 12),
@@ -73,26 +87,31 @@ export function ToolpathViewer() {
     const stock = new THREE.Group()
     scene.add(stock)
 
+    // Rendu a la demande : seulement si la camera bouge ou si les donnees changent.
+    const loop = new RenderLoop(() => {
+      const moving = controls.update()
+      renderer.render(scene, camera)
+      return moving
+    })
+    controls.addEventListener('change', () => loop.invalidate())
+
     refs.current = {
+      loop,
       renderer,
       scene,
       camera,
       controls,
       cut,
       rapid,
+      done,
+      doneLines: new Int32Array(0),
       tool,
       stock,
       bedGrid: grid,
       center: new THREE.Vector3(),
     }
 
-    let raf = 0
-    const animate = () => {
-      controls.update()
-      renderer.render(scene, camera)
-      raf = requestAnimationFrame(animate)
-    }
-    animate()
+    loop.invalidate()
 
     const resize = () => {
       const width = container.clientWidth
@@ -101,16 +120,19 @@ export function ToolpathViewer() {
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height)
+      loop.invalidate()
     }
     const observer = new ResizeObserver(resize)
     observer.observe(container)
 
     return () => {
-      cancelAnimationFrame(raf)
+      loop.dispose()
       observer.disconnect()
       controls.dispose()
       cut.geometry.dispose()
       rapid.geometry.dispose()
+      done.geometry.dispose()
+      ;(done.material as THREE.Material).dispose()
       ;(cut.material as THREE.Material).dispose()
       ;(rapid.material as THREE.Material).dispose()
       tool.geometry.dispose()
@@ -127,7 +149,23 @@ export function ToolpathViewer() {
     const current = refs.current
     if (!current) return
     applyToolpath(current, toolpath)
+    current.loop.invalidate()
   }, [toolpath])
+
+  // Avancement : les segments des lignes deja acquittees par GRBL sont surlignes.
+  useEffect(() => {
+    const current = refs.current
+    if (!current) return
+    const active = streamState !== 'idle'
+    const count = active ? countBefore(current.doneLines, executedLine) : 0
+    const visible = count > 0
+    const geometry = current.done.geometry as THREE.BufferGeometry
+    if (visible !== current.done.visible || geometry.drawRange.count !== count * 2) {
+      current.done.visible = visible
+      geometry.setDrawRange(0, count * 2)
+      current.loop.invalidate()
+    }
+  }, [streamState, executedLine, toolpath])
 
   useEffect(() => {
     const current = refs.current
@@ -145,6 +183,7 @@ export function ToolpathViewer() {
       current.camera.updateProjectionMatrix()
       current.controls.update()
     }
+    current.loop.invalidate()
   }, [stockSetting, toolpath])
 
   useEffect(() => {
@@ -156,6 +195,7 @@ export function ToolpathViewer() {
     grid.position.z = stockSetting.enabled ? -stockSetting.thickness : 0
     current.scene.add(grid)
     current.bedGrid = grid
+    current.loop.invalidate()
   }, [machine, stockSetting])
 
   useEffect(() => {
@@ -167,11 +207,14 @@ export function ToolpathViewer() {
       status?.wpos ??
       (mpos && wco ? { x: mpos.x - wco.x, y: mpos.y - wco.y, z: mpos.z - wco.z } : mpos)
     if (!position) {
+      if (current.tool.visible) current.loop.invalidate()
       current.tool.visible = false
       return
     }
+    const moved = !current.tool.visible || current.tool.position.x !== position.x || current.tool.position.y !== position.y || current.tool.position.z !== position.z
     current.tool.visible = true
     current.tool.position.set(position.x, position.y, position.z)
+    if (moved) current.loop.invalidate()
   }, [status, offsets])
 
   const bounds = toolpath?.bounds
@@ -201,16 +244,26 @@ export function ToolpathViewer() {
 function applyToolpath(refs: SceneRefs, toolpath: Toolpath | null): void {
   const cutPositions: number[] = []
   const rapidPositions: number[] = []
+  const segments = toolpath?.segments ?? []
+  const donePositions = new Float32Array(segments.length * 6)
+  const doneLines = new Int32Array(segments.length)
 
-  if (toolpath) {
-    for (const segment of toolpath.segments) {
-      const target = segment.rapid ? rapidPositions : cutPositions
-      target.push(segment.from.x, segment.from.y, segment.from.z, segment.to.x, segment.to.y, segment.to.z)
-    }
-  }
+  segments.forEach((segment, i) => {
+    const target = segment.rapid ? rapidPositions : cutPositions
+    target.push(segment.from.x, segment.from.y, segment.from.z, segment.to.x, segment.to.y, segment.to.z)
+    donePositions.set([segment.from.x, segment.from.y, segment.from.z, segment.to.x, segment.to.y, segment.to.z], i * 6)
+    // Monotone pour la recherche dichotomique.
+    doneLines[i] = Math.max(segment.line ?? 0, i ? doneLines[i - 1] : 0)
+  })
 
   setPositions(refs.cut, cutPositions)
   setPositions(refs.rapid, rapidPositions)
+  const doneGeometry = refs.done.geometry as THREE.BufferGeometry
+  doneGeometry.setAttribute('position', new THREE.BufferAttribute(donePositions, 3))
+  doneGeometry.setDrawRange(0, 0)
+  doneGeometry.computeBoundingSphere()
+  refs.done.visible = false
+  refs.doneLines = doneLines
 
   if (!toolpath) {
     refs.tool.visible = false
@@ -228,6 +281,18 @@ function applyToolpath(refs: SceneRefs, toolpath: Toolpath | null): void {
   refs.camera.far = distance * 8
   refs.camera.updateProjectionMatrix()
   refs.controls.update()
+}
+
+/** Nombre de segments dont la ligne est strictement inferieure a `line`. */
+function countBefore(lines: Int32Array, line: number): number {
+  let lo = 0
+  let hi = lines.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (lines[mid] < line) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 function setPositions(object: THREE.LineSegments, positions: number[]): void {

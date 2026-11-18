@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { estimateMinutes } from '../gcode/estimate'
 import { useT } from '../i18n'
 import { jobLimits, useStore } from '../state/store'
@@ -16,12 +16,17 @@ export function FilePanel() {
   const dryRun = useStore((s) => s.dryRun)
   const setDryRun = useStore((s) => s.setDryRun)
   const jobType = useStore((s) => s.jobType)
+  const setJobType = useStore((s) => s.setJobType)
   const settings = useStore((s) => s.settings)
   const params = useStore((s) => s.params)
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
   const machines = useStore((s) => s.machines)
   const machineId = useStore((s) => s.machineId)
-  const status = useStore((s) => s.status)
+  // Abonnements fins : le statut arrive 5 fois/s, on ne garde que ce qui sert
+  // (sinon emprise et duree seraient recalculees en permanence).
+  const machineState = useStore((s) => s.status?.state)
+  const wcoKey = useStore((s) => (s.status?.wco ? `${s.status.wco.x},${s.status.wco.y},${s.status.wco.z}` : ''))
+  const mposSign = useStore((s) => (s.status?.mpos ? [s.status.mpos.x, s.status.mpos.y, s.status.mpos.z].map((v) => (v < -0.5 ? '-' : v > 0.5 ? '+' : '0')).join('') : ''))
   const homed = useStore((s) => s.homed)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -42,17 +47,32 @@ export function FilePanel() {
     if (file) readFile(file)
   }
 
-  const percent = stream.total ? Math.round((stream.sent / stream.total) * 100) : 0
   const running = stream.state === 'running'
   const paused = stream.state === 'paused'
+  // Avancement reel = lignes acquittees par GRBL (et non simplement envoyees).
+  const done = stream.done ?? stream.sent
+  const percent = stream.total ? Math.round((done / stream.total) * 100) : 0
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!running && !paused) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [running, paused])
   const programPause = paused && stream.pauseReason === 'program'
-  const machineState = status?.state
   const notReady = connected && machineState !== 'Idle' && machineState !== 'Check'
   const laserMismatch = jobType === 'laser' && settings[32] !== '1'
   const millMismatch = jobType === 'mill' && settings[32] === '1'
   const blocked = laserMismatch || millMismatch
-  const limits = jobLimits(toolpath, { machines, machineId, settings, status, homed })
-  const estimate = toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid, accel: Math.min(Number(settings[120]) || 500, Number(settings[121]) || 500) }) : null
+  const limits = useMemo(
+    () => jobLimits(toolpath, { machines, machineId, settings, status: useStore.getState().status, homed }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [toolpath, machines, machineId, settings, homed, wcoKey, mposSign],
+  )
+  const accel = Math.min(Number(settings[120]) || 500, Number(settings[121]) || 500)
+  const estimate = useMemo(
+    () => (toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid, accel }) : null),
+    [toolpath, machine, params.feed, accel],
+  )
   const timeText = estimate
     ? estimate.minutes >= 1
       ? `${estimate.minutes.toFixed(1)} min`
@@ -90,7 +110,16 @@ export function FilePanel() {
       <div className="file-name">
         {fileName ?? t('Aucun fichier (glisser-déposer)')}
         {jobType && (
-          <span className={`job-badge job-${jobType}`}>{t(jobType === 'laser' ? 'Laser' : 'Fraisage')}</span>
+          <select
+            className={`job-badge job-${jobType}`}
+            value={jobType}
+            disabled={running || paused}
+            title={t('Type de programme (détecté automatiquement, modifiable)')}
+            onChange={(e) => setJobType(e.target.value as 'mill' | 'laser')}
+          >
+            <option value="mill">{t('Fraisage')}</option>
+            <option value="laser">{t('Laser')}</option>
+          </select>
         )}
       </div>
 
@@ -132,9 +161,17 @@ export function FilePanel() {
       <div className="progress">
         <div className="progress-fill" style={{ width: `${percent}%` }} />
         <span className="progress-label">
-          {stream.sent}/{stream.total} ({percent}%)
+          {done}/{stream.total} ({percent}%)
         </span>
       </div>
+      {(running || paused) && stream.startedAt && (
+        <div className="file-stats">
+          <span>{t('Écoulé')} : {formatDuration((now - stream.startedAt) / 1000)}</span>
+          <span>
+            {t('Restant')} ≈ {formatDuration(remainingSeconds(now - stream.startedAt, done, stream.total, estimate?.minutes))}
+          </span>
+        </div>
+      )}
 
       <label className="check">
         <input type="checkbox" checked={dryRun} disabled={running || paused} onChange={(e) => setDryRun(e.target.checked)} />
@@ -180,4 +217,20 @@ export function FilePanel() {
       </div>
     </section>
   )
+}
+
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '—'
+  const total = Math.round(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sec = total % 60
+  return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min ${String(sec).padStart(2, '0')}`
+}
+
+/** Temps restant : extrapole la vitesse reelle une fois le job lance, sinon l'estimation. */
+function remainingSeconds(elapsedMs: number, done: number, total: number, estimateMinutes?: number): number {
+  const fraction = total ? done / total : 0
+  if (fraction > 0.03 && elapsedMs > 20000) return ((elapsedMs / 1000) * (1 - fraction)) / fraction
+  return estimateMinutes !== undefined ? estimateMinutes * 60 * (1 - fraction) : Number.NaN
 }

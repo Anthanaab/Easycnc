@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
+import { startJobWatch } from './state/jobWatch'
 import './styles.css'
 
 registerSW({ immediate: true })
+startJobWatch()
 
 const container = document.getElementById('root')
 if (!container) throw new Error('Element #root introuvable')

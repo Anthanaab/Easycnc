@@ -1159,6 +1159,13 @@ select:focus {
   vertical-align: middle;
 }
 
+select.job-badge {
+  width: auto;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .job-laser {
   color: #ff8b84;
   border-color: rgba(229, 83, 75, 0.5);

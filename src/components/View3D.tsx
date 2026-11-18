@@ -5,6 +5,7 @@ import { buildHeightMap, buildSamples, carveTool, stockFromBounds, type HeightMa
 import type { CamResult } from '../cam/toolpath'
 import type { Bounds } from '../cam/types'
 import { buildBedGrid, disposeBedGrid } from './bedGrid'
+import { RenderLoop } from './renderLoop'
 
 interface Props {
   result: CamResult | null
@@ -35,6 +36,7 @@ interface SceneRefs {
   stockEdges: THREE.LineSegments
   toolpath: THREE.LineSegments
   tool: THREE.Group
+  loop: RenderLoop
 }
 
 interface SimState {
@@ -132,19 +134,16 @@ export function View3D(props: Props) {
     tool.visible = false
     scene.add(tool)
 
-    refs.current = { renderer, scene, camera, controls, surface, body, bed, stockEdges, toolpath, tool }
-
-    let raf = 0
-    let last = performance.now()
-    const frame = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
-      last = now
-      stepSimulation(dt)
-      controls.update()
+    // Rendu a la demande : simulation en cours, camera en mouvement ou donnees modifiees.
+    const loop = new RenderLoop((dt) => {
+      const busy = stepSimulation(dt)
+      const moving = controls.update()
       renderer.render(scene, camera)
-      raf = requestAnimationFrame(frame)
-    }
-    raf = requestAnimationFrame(frame)
+      return busy || moving
+    })
+    controls.addEventListener('change', () => loop.invalidate())
+    refs.current = { renderer, scene, camera, controls, surface, body, bed, stockEdges, toolpath, tool, loop }
+    loop.invalidate()
 
     const resize = () => {
       const width = container.clientWidth
@@ -153,12 +152,13 @@ export function View3D(props: Props) {
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height)
+      loop.invalidate()
     }
     const observer = new ResizeObserver(resize)
     observer.observe(container)
 
     return () => {
-      cancelAnimationFrame(raf)
+      loop.dispose()
       observer.disconnect()
       controls.dispose()
       surface.geometry.dispose()
@@ -206,11 +206,13 @@ export function View3D(props: Props) {
     fitCamera(current, stock, props.thickness)
     updateSurface(current, sim.current, true)
     propsRef.current.onProgress(0)
+    current.loop.invalidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, samples, props.toolDiameter, props.toolType, props.toolAngle, props.toolShapes, props.result, stock, props.thickness])
 
   useEffect(() => {
     if (sim.current) sim.current.playing = props.playing
+    refs.current?.loop.invalidate()
   }, [props.playing])
 
   useEffect(() => {
@@ -220,6 +222,7 @@ export function View3D(props: Props) {
     const grid = buildBedGrid(props.bedArea.x, props.bedArea.y)
     current.bed.add(grid)
     current.bed.position.z = -props.thickness
+    current.loop.invalidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.bedArea, props.thickness])
 
@@ -238,13 +241,15 @@ export function View3D(props: Props) {
     current.tool.position.set(0, 0, propsRef.current.safeZ)
     updateSurface(current, state, true)
     propsRef.current.onProgress(0)
+    current.loop.invalidate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.resetToken])
 
-  function stepSimulation(dt: number): void {
+  /** Avance la simulation ; renvoie vrai s'il faut encore des images. */
+  function stepSimulation(dt: number): boolean {
     const current = refs.current
     const state = sim.current
-    if (!current || !state) return
+    if (!current || !state) return false
     const now = performance.now()
     if (state.playing && state.samples.length && state.index < state.samples.length) {
       const advance = Math.max(1, Math.round(state.speed * state.samples.length * dt))
@@ -277,6 +282,9 @@ export function View3D(props: Props) {
       state.lastUpdate = now
       if (!state.playing) state.dirty = false
     }
+    const running = state.playing && state.index < state.samples.length
+    // Encore une image pour afficher la derniere mise a jour de la surface.
+    return running || state.dirty
   }
 
   return <div className="view3d" ref={containerRef} />

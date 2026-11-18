@@ -4,13 +4,12 @@ import { useStore } from '../state/store'
 export function ProbePanel() {
   const connected = useStore((s) => s.connected)
   const homed = useStore((s) => s.homed)
-  const status = useStore((s) => s.status)
+  const alarm = useStore((s) => s.status?.state === 'Alarm')
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
   const runProbe = useStore((s) => s.runProbe)
   const home = useStore((s) => s.home)
   const unlock = useStore((s) => s.unlock)
 
-  const alarm = status?.state === 'Alarm'
   const probe = useStore((s) => s.probe)
   const t = useT()
 

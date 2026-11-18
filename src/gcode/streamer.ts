@@ -104,6 +104,7 @@ export class GcodeStreamer {
   private error: Error | null = null
   private inFlight = 0
   private sentCount = 0
+  private ackCount = 0
   private pauseReason: PauseReason | null = null
   private wake: (() => void) | null = null
   private savedModal: string | null = null
@@ -120,6 +121,11 @@ export class GcodeStreamer {
   loadLines(lines: string[]): void {
     if (this.running) throw new Error('Programme en cours : arretez-le avant d\'en charger un autre')
     this.lines = lines.map((line) => line.trim()).filter((line) => line.length > 0)
+  }
+
+  /** Lignes acquittees par GRBL (planifiees) : avancement reel a ~15 blocs pres. */
+  get acked(): number {
+    return this.ackCount
   }
 
   get total(): number {
@@ -161,6 +167,7 @@ export class GcodeStreamer {
       .send(line)
       .then(() => {
         this.inFlight--
+        this.ackCount++
         this.signal()
       })
       .catch((err: unknown) => {
@@ -210,6 +217,7 @@ export class GcodeStreamer {
     this.stopped = false
     this.error = null
     this.sentCount = 0
+    this.ackCount = 0
     this.inFlight = 0
     this.pauseReason = null
     this.callbacks.onStateChange?.('running')

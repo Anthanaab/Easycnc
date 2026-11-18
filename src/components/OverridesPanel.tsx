@@ -3,7 +3,7 @@ import { useStore } from '../state/store'
 
 export function OverridesPanel() {
   const connected = useStore((s) => s.connected)
-  const status = useStore((s) => s.status)
+  const ovKey = useStore((s) => s.status?.ov?.join(',') ?? '100,100,100')
   const feedHold = useStore((s) => s.feedHold)
   const cycleStart = useStore((s) => s.cycleStart)
   const feedOverride = useStore((s) => s.feedOverride)
@@ -11,7 +11,7 @@ export function OverridesPanel() {
   const rapidOverride = useStore((s) => s.rapidOverride)
   const t = useT()
 
-  const ov = status?.ov ?? [100, 100, 100]
+  const ov = ovKey.split(',').map(Number)
   const disabled = !connected
 
   return (

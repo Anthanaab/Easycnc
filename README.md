@@ -63,6 +63,7 @@ npm run preview
 - `Ctrl+Z` / `Ctrl+Shift+Z` (ou `Ctrl+Y`) : annuler / rétablir (conception)
 - Flèches : jog X/Y par pas ; `Page ↑/↓` : jog Z
 - `Échap` : fermer une fenêtre
+- `Espace` : pause / reprise d'un programme en cours (feed hold)
 
 ## Sécurité
 

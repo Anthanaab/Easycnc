@@ -20,6 +20,7 @@ import { TutorialModal } from './components/TutorialModal'
 import { View3DTab } from './components/View3DTab'
 import { AUTOSAVE_NAME, currentProject, saveProject } from './state/project'
 import { useT } from './i18n'
+import { useStore } from './state/store'
 import { useUiStore, type TabId } from './state/uiStore'
 
 const TABS: Array<{ id: TabId; ready: boolean }> = [
@@ -70,6 +71,17 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && !typing && e.key.toLowerCase() === 'y') {
         e.preventDefault()
         useCamStore.getState().redo()
+      }
+      // Espace : pause (feed hold) / reprise d'un programme en cours.
+      if (e.key === ' ' && !typing && !e.repeat && target?.tagName !== 'BUTTON') {
+        const store = useStore.getState()
+        if (store.stream.state === 'running') {
+          e.preventDefault()
+          store.pauseStream()
+        } else if (store.stream.state === 'paused' && store.stream.pauseReason === 'user') {
+          e.preventDefault()
+          store.resumeStream()
+        }
       }
       if ((e.ctrlKey || e.metaKey) && /^[1-7]$/.test(e.key)) {
         e.preventDefault()

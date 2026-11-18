@@ -10,7 +10,7 @@ export function ConnectionBar() {
   const supported = useStore((s) => s.supported)
   const connected = useStore((s) => s.connected)
   const baudRate = useStore((s) => s.baudRate)
-  const status = useStore((s) => s.status)
+  const machineState = useStore((s) => s.status?.state)
   const welcome = useStore((s) => s.welcome)
   const connect = useStore((s) => s.connect)
   const disconnect = useStore((s) => s.disconnect)
@@ -33,7 +33,7 @@ export function ConnectionBar() {
     ? `${loc(machine.brand, machine.brandEn)} — ${loc(machine.name, machine.nameEn)}`
     : 'Contrôleur GRBL'
 
-  const state = status?.state ?? (connected ? '…' : 'offline')
+  const state = machineState ?? (connected ? '…' : 'offline')
   const badgeClass = `state-badge state-${state.toLowerCase()}`
 
   return (

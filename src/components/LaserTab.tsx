@@ -67,7 +67,7 @@ export function LaserTab() {
   const params = useStore((s) => s.params)
   const setParams = useStore((s) => s.setParams)
   const settings = useStore((s) => s.settings)
-  const status = useStore((s) => s.status)
+  // Statut lu a la demande : s'y abonner re-rendrait tout l'onglet 5 fois/s.
   const connected = useStore((s) => s.connected)
   const homed = useStore((s) => s.homed)
   const machine = useStore((s) => s.machines.find((m) => m.id === s.machineId))
@@ -229,6 +229,7 @@ export function LaserTab() {
 
   const focusEnable = async () => {
     if (!connected || focusOn) return
+    const status = useStore.getState().status
     if (status?.state === 'Alarm') {
       setMessage(t('Alarme active'))
       return

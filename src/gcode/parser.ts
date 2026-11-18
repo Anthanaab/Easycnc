@@ -6,6 +6,8 @@ export interface Segment {
   rapid: boolean
   /** Avance programmee (mm/min) ; 0 si inconnue. */
   feed?: number
+  /** Index de la ligne de programme (meme numerotation que le streamer). */
+  line?: number
 }
 
 export interface Bounds {
@@ -111,14 +113,16 @@ export function parseGcode(source: string): Toolpath {
   }
 
   const pushSegment = (from: Vec3, to: Vec3, rapid: boolean) => {
-    segments.push({ from: clone(from), to: clone(to), rapid, feed: rapid ? undefined : state.feed * state.scale })
+    segments.push({ from: clone(from), to: clone(to), rapid, feed: rapid ? undefined : state.feed * state.scale, line: lineIndex })
     track(to)
   }
 
   track(state.pos)
   let moves = 0
 
+  let lineIndex = -1
   for (const rawLine of lines) {
+    lineIndex++
     const words = tokenize(rawLine)
     if (!words.length) continue
 
@@ -343,4 +347,24 @@ function sweepAngle(start: Vec3, end: Vec3, center: { x: number; y: number }, cl
     while (delta <= 0) delta += 2 * Math.PI
   }
   return delta
+}
+
+/**
+ * Devine le type d'un programme importe. Laser : puissance S sur les lignes de
+ * coupe (G1/G2/G3 ... S) ou M4, et jamais de plongee sous Z0.
+ * Fraisage par defaut (le cas le plus sur : refuse si $32=1).
+ */
+export function detectJobType(source: string): 'mill' | 'laser' {
+  const lines = stripComments(source)
+  let powerOnCut = false
+  let dynamicLaser = false
+  let plunge = false
+  for (const raw of lines) {
+    const line = raw.toUpperCase()
+    if (/\bM0*4(?![0-9.])/.test(line)) dynamicLaser = true
+    if (/\bG0*[123](?![0-9.])/.test(line) && /\bS\s*\d/.test(line)) powerOnCut = true
+    const z = /Z\s*(-?\d*\.?\d+)/.exec(line)
+    if (z && Number(z[1]) < -0.01 && !/G(?:10|92|53|28|30|38)/.test(line)) plunge = true
+  }
+  return (powerOnCut || dynamicLaser) && !plunge ? 'laser' : 'mill'
 }
