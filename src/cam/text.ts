@@ -1,4 +1,9 @@
 import type * as opentype from 'opentype.js'
+import oswald500 from './fonts/oswald500.woff?url'
+import pacifico400 from './fonts/pacifico400.woff?url'
+import playfair700 from './fonts/playfair700.woff?url'
+import roboto400 from './fonts/roboto400.woff?url'
+import roboto700 from './fonts/roboto700.woff?url'
 import type { Point } from './types'
 
 export const FONTS = [
@@ -9,24 +14,31 @@ export const FONTS = [
   { id: 'pacifico400', label: 'Pacifico (écriture)' },
 ]
 
-// Les polices (~320 Ko) et opentype.js ne sont charges qu'au premier besoin :
-// le demarrage de l'application n'en depend plus.
-interface FontLib {
-  parse: typeof opentype.parse
-  data: Record<string, string>
-}
-let lib: FontLib | null = null
+// Polices (fichiers WOFF, ~115 Ko) et opentype.js charges au premier besoin.
+// Les fichiers sont partages par la page et le worker FAO (un seul telechargement).
+
+const FONT_URLS: Record<string, string> = { roboto400, roboto700, oswald500, playfair700, pacifico400 }
+
+let fonts: Record<string, opentype.Font> | null = null
 let loading: Promise<void> | null = null
 const listeners = new Set<() => void>()
 
 /** Charge les polices (une seule fois). */
 export function loadFonts(): Promise<void> {
   if (!loading) {
-    loading = Promise.all([import('opentype.js'), import('./fonts')]).then(([ot, fonts]) => {
-      lib = { parse: ot.parse, data: fonts.FONT_DATA }
+    loading = (async () => {
+      const ot = await import('opentype.js')
+      const entries = await Promise.all(
+        Object.entries(FONT_URLS).map(async ([id, url]) => {
+          const response = await fetch(url)
+          if (!response.ok) throw new Error(`Police ${id} introuvable (${response.status})`)
+          return [id, ot.parse(await response.arrayBuffer())] as const
+        }),
+      )
+      fonts = Object.fromEntries(entries)
       outlineCache.clear()
       for (const fn of listeners) fn()
-    })
+    })()
     loading.catch(() => {
       loading = null
     })
@@ -35,7 +47,7 @@ export function loadFonts(): Promise<void> {
 }
 
 export function fontsReady(): boolean {
-  return lib !== null
+  return fonts !== null
 }
 
 /** Rappel quand les polices sont pretes (pour recalculer les textes). */
@@ -44,19 +56,11 @@ export function onFontsReady(fn: () => void): () => void {
   return () => listeners.delete(fn)
 }
 
-const fontCache: Record<string, opentype.Font> = {}
 const outlineCache = new Map<string, Point[][]>()
 
 function getFont(id: string): opentype.Font | null {
-  if (!lib) return null
-  const key = lib.data[id] ? id : 'roboto700'
-  if (!fontCache[key]) {
-    const binary = atob(lib.data[key])
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    fontCache[key] = lib.parse(bytes.buffer)
-  }
-  return fontCache[key]
+  if (!fonts) return null
+  return fonts[id] ?? fonts.roboto700 ?? null
 }
 
 /** Contours d'un texte, centres sur l'origine (Y vers le haut), en mm. */

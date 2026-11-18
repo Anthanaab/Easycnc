@@ -14,7 +14,7 @@ utilise les composants tiers suivants, soumis à leurs propres licences.
 | clipper-lib | 6.4.2 | Boost Software License 1.0 | http://jsclipper.sourceforge.net |
 | zustand | 4 | MIT | https://github.com/pmndrs/zustand |
 
-## Polices embarquées (`src/cam/fonts.ts`)
+## Polices embarquées (`src/cam/fonts/*.woff`)
 
 Les polices sont intégrées en base64 pour un usage hors-ligne.
 
@@ -35,5 +35,5 @@ sous licences MIT / Apache-2.0, utilisés uniquement au build et aux tests.
 
 ## Source des polices
 
-Les données de police (`src/cam/fonts.ts`) proviennent du dépôt
+Les données de police (`src/cam/fonts/*.woff`) proviennent du dépôt
 [Anthanaab/Easycnc](https://github.com/Anthanaab/Easycnc).

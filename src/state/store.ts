@@ -11,6 +11,7 @@ import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZ } from '../gcode/dryrun'
 import { resumeProgram } from '../gcode/resume'
 import { detectJobType, parseGcode, type Toolpath } from '../gcode/parser'
+import { parseGcodeInWorker } from '../cam/workerClient'
 import { createLibraryActions } from './library'
 import { jobLimits, travelOf } from './limits'
 import { recordJobEnd, recordJobStart } from './jobHistory'
@@ -73,6 +74,8 @@ export interface AppState {
   rawGcode: string | null
   jobType: 'mill' | 'laser' | null
   toolpath: Toolpath | null
+  /** Analyse du G-code en cours (gros fichiers, dans le worker). */
+  parsing: boolean
   stream: StreamInfo
 
   connect: (baudRate?: number) => Promise<void>
@@ -179,6 +182,9 @@ async function toolsetterMeasure(): Promise<number | null> {
   }
 }
 
+// Chargements successifs : seul le dernier resultat d'analyse compte.
+let loadCounter = 0
+
 // Jog continu en cours (annule si la fenetre perd le focus).
 let continuousJog = false
 
@@ -227,6 +233,7 @@ export const useStore = create<AppState>((set, get) => ({
   rawGcode: null,
   jobType: null,
   toolpath: null,
+  parsing: false,
   stream: { state: 'idle', sent: 0, total: 0 },
 
   connect: async (baudRate) => {
@@ -540,17 +547,34 @@ export const useStore = create<AppState>((set, get) => ({
       pushLog('error', tr('Programme en cours : arretez-le avant d\'en charger un autre'))
       return
     }
-    const toolpath = parseGcode(text)
     streamer.load(text)
+    const loadId = ++loadCounter
+    const done = (toolpath: Toolpath) => {
+      // Un autre fichier a ete charge entre-temps : resultat perime.
+      if (loadId !== loadCounter) return
+      set({ toolpath, parsing: false })
+      pushLog('info', tr('Fichier charge: {name} ({lines} lignes, {moves} mouvements)', { name, lines: toolpath.lines, moves: toolpath.moves }))
+      for (const warning of toolpath.warnings) pushLog('info', tr('Apercu: {msg}', { msg: warning }))
+    }
     set({
       fileName: name,
       rawGcode: text,
       jobType,
-      toolpath,
+      toolpath: null,
+      parsing: true,
       stream: { state: 'idle', sent: 0, total: streamer.total },
     })
-    pushLog('info', tr('Fichier charge: {name} ({lines} lignes, {moves} mouvements)', { name, lines: toolpath.lines, moves: toolpath.moves }))
-    for (const warning of toolpath.warnings) pushLog('info', tr('Apercu: {msg}', { msg: warning }))
+    // Petits fichiers : immediat. Gros fichiers : analyse dans le worker (page fluide).
+    if (text.length < 200_000) {
+      done(parseGcode(text))
+    } else {
+      pushLog('info', tr('Analyse de {name}…', { name }))
+      parseGcodeInWorker(text).then(done, (error) => {
+        if (loadId !== loadCounter) return
+        set({ parsing: false })
+        pushLog('error', tr('Analyse impossible : {msg}', { msg: message(error) }))
+      })
+    }
   },
 
   startStream: async (fromLine) => {
@@ -566,6 +590,11 @@ export const useStore = create<AppState>((set, get) => ({
       return
     }
     if (streamer.isRunning) return
+    // Sans apercu analyse, pas de controle d'emprise : demarrage refuse.
+    if (get().parsing || !get().toolpath) {
+      pushLog('error', tr('Analyse du programme en cours : patientez'))
+      return
+    }
     const machineState = get().status?.state
     if (machineState !== 'Idle' && machineState !== 'Check') {
       pushLog('error', tr('Machine non prete (etat {state}) : attendez Idle, ou deverrouillez ($X) / faites le homing', { state: machineState ?? '?' }))

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCamStore } from '../cam/camStore'
 import { toolpathToGcode } from '../cam/gcode'
-import { imageHeight, imagePaths, sampleImage, testGridPaths, type LaserImage } from '../cam/laserImage'
+import { imageHeight, sampleImage, type LaserImage } from '../cam/laserImage'
 import { shapeLoops } from '../cam/geometry'
-import { generateToolpath, type CamResult, type CutPath } from '../cam/toolpath'
+import type { CamResult } from '../cam/toolpath'
+import { useCamJob } from '../cam/useCamJob'
 import type { Bounds, Shape } from '../cam/types'
 import { useT, useTf } from '../i18n'
 import { client, machineBusyReason, useStore } from '../state/store'
@@ -32,22 +33,6 @@ function NumberField({
       />
     </label>
   )
-}
-
-function boundsOfPaths(paths: CutPath[]): Bounds | null {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const path of paths) {
-    for (const p of path.points) {
-      minX = Math.min(minX, p.x)
-      minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x)
-      maxY = Math.max(maxY, p.y)
-    }
-  }
-  return Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null
 }
 
 export function LaserTab() {
@@ -91,54 +76,28 @@ export function LaserTab() {
   const t = useT()
   const tf = useTf()
 
-  const combined: CamResult = useMemo(() => {
-    // Toutes les formes dessinees sont gravees : laser_fill si demande, sinon contour.
-    const laserShapes = shapes
-      .filter((s) => s.enabled && s.kind !== 'testgrid' && s.op !== 'none')
-      .map((s) => ({ ...s, op: s.op === 'laser_fill' ? 'laser_fill' : 'laser_contour' } as Shape))
-    const shapeResult = generateToolpath(laserShapes, params, 0.1, {
-      laser: { power: laser.power, fillStepover: laser.fillStepover, passes: laser.passes, spotWidth: laser.spotWidth },
-    })
-    const imgPaths = images.flatMap((image) =>
-      imagePaths(image, { mode: laser.imageMode, threshold: laser.threshold, overscan: laser.overscan }),
-    )
-    const gridPaths = shapes
-      .filter((shape) => shape.kind === 'testgrid' && shape.enabled)
-      .flatMap((shape) => {
-        const cols = Math.max(1, Math.round(shape.cols ?? 5))
-        const rows = Math.max(1, Math.round(shape.rows ?? 2))
-        const cell = Math.max(1, shape.cell ?? 8)
-        const gap = Math.max(0, shape.gap ?? 2)
-        const totalW = cols * cell + (cols - 1) * gap
-        const totalH = rows * cell + (rows - 1) * gap
-        return testGridPaths({
-          originX: shape.x - totalW / 2,
-          originY: shape.y - totalH / 2,
-          cell,
-          gap,
-          cols,
-          rows,
-          minPower: Math.round(laser.power * 0.1),
-          maxPower: laser.power,
-          hatchStep: 0.3,
-        })
-      })
-    const paths = [...shapeResult.paths, ...imgPaths, ...gridPaths]
-    return { paths, warnings: shapeResult.warnings, bounds: boundsOfPaths(paths), moveCount: 0, cutLength: 0 }
-  }, [shapes, params, images, laser.power, laser.fillStepover, laser.passes, laser.spotWidth, laser.imageMode, laser.threshold, laser.overscan])
-
-  const gcode = useMemo(
-    () =>
-      toolpathToGcode(combined, {
+  // Calcul (formes, images, grille de test) + G-code dans le Web Worker.
+  const { output: laserOutput, pending: computing } = useCamJob(
+    {
+      kind: 'laser',
+      shapes,
+      params,
+      laser,
+      // Sans la source (data URL) : seules les donnees echantillonnees servent.
+      images: images.map(({ src: _src, ...rest }) => rest),
+      gcode: {
         safeZ: params.safeZ,
         feed: params.feed,
         plunge: params.plunge,
         rpm: 0,
         spindleMode: 'grbl',
         laser: { mode: laser.mode, power: laser.power, focusZ: laser.focusZ },
-      }),
-    [combined, params, laser.mode, laser.power],
+      },
+    },
+    [shapes, params, images, laser],
   )
+  const combined: CamResult = laserOutput.result
+  const gcode = laserOutput.gcode ?? ''
 
   const laserModeOn = settings[32] === '1'
   const lineCount = gcode.split('\n').length
@@ -568,11 +527,11 @@ export function LaserTab() {
             <button className="btn" disabled={!combined.paths.length} onClick={frame}>
               {t('Cadrer')}
             </button>
-            <button className="btn primary" disabled={!combined.paths.length || fontsPending} onClick={load}>
+            <button className="btn primary" disabled={!combined.paths.length || fontsPending || computing} onClick={load}>
               {fontsPending ? t('Chargement des polices…') : t('Charger dans Pilotage')}
             </button>
           </div>
-          <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={!combined.paths.length || fontsPending} onClick={download}>
+          <button className="btn" style={{ marginTop: 8, width: '100%' }} disabled={!combined.paths.length || fontsPending || computing} onClick={download}>
             {t('Télécharger .nc')}
           </button>
           <p className="notes">{t('Opérations laser sur les formes (contour / remplissage) dans l\'onglet Conception 2D. Le cadrage trace le rectangle à faible puissance pour positionner la pièce.')}</p>

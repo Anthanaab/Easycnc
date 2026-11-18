@@ -43,7 +43,7 @@ export default defineConfig({
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),
@@ -70,7 +70,7 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules/three')) return 'three'
           if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) return 'react'
-          if (id.includes('opentype') || id.includes('cam/fonts')) return 'fonts'
+          if (id.includes('opentype')) return 'fonts'
           if (id.includes('clipper-lib')) return 'clipper'
           return undefined
         },

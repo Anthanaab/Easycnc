@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { useCamStore } from '../cam/camStore'
-import { toolpathToGcode } from '../cam/gcode'
 import { imageHeight, sampleImage, type LaserImage } from '../cam/laserImage'
-import { reliefPaths } from '../cam/relief'
 import type { CamResult } from '../cam/toolpath'
+import { useCamJob } from '../cam/useCamJob'
 import type { Bounds } from '../cam/types'
 import { useLoc, useT } from '../i18n'
 import { useStore } from '../state/store'
@@ -29,21 +28,6 @@ function NumberField({
   )
 }
 
-function boundsOfPaths(paths: CamResult['paths']): Bounds | null {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const path of paths) {
-    for (const p of path.points) {
-      minX = Math.min(minX, p.x)
-      minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x)
-      maxY = Math.max(maxY, p.y)
-    }
-  }
-  return Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null
-}
 
 export function ReliefTab() {
   const images = useCamStore((s) => s.images)
@@ -76,36 +60,24 @@ export function ReliefTab() {
   const t = useT()
   const loc = useLoc()
 
-  const result: CamResult = useMemo(() => {
-    const paths = images.flatMap((image) => {
-      const finish = reliefPaths(image, { maxDepth, invert, direction, mode: 'finish' })
-      const rough = roughing
-        ? reliefPaths(image, {
-            maxDepth,
-            invert,
-            direction,
-            mode: 'rough',
-            allowance,
-            depthPerPass,
-            roughStepover,
-          })
-        : []
-      return [...rough, ...finish]
-    })
-    return { paths, warnings: [], bounds: boundsOfPaths(paths), moveCount: 0, cutLength: 0 }
-  }, [images, maxDepth, invert, direction, roughing, allowance, depthPerPass, roughStepover])
-
-  const gcode = useMemo(
-    () =>
-      toolpathToGcode(result, {
+  // Relief (ebauche par paliers + finition) et G-code dans le Web Worker.
+  const { output } = useCamJob(
+    {
+      kind: 'relief',
+      images: images.map(({ src: _src, ...rest }) => rest),
+      options: { maxDepth, invert, direction, roughing, allowance, depthPerPass, roughStepover },
+      gcode: {
         safeZ: params.safeZ,
         feed: params.feed,
         plunge: params.plunge,
         rpm: params.rpm,
         spindleMode: machine?.spindle.mode ?? 'grbl',
-      }),
-    [result, params, machine],
+      },
+    },
+    [images, maxDepth, invert, direction, roughing, allowance, depthPerPass, roughStepover, params, machine],
   )
+  const result: CamResult = output.result
+  const gcode = output.gcode ?? ''
 
   const onImport = (file: File) => {
     const reader = new FileReader()

@@ -249,3 +249,28 @@ describe('nivellement', () => {
     expect(last.x === 10 && last.y === 10).toBe(false)
   })
 })
+
+import { reliefPaths } from '../cam/relief'
+
+describe('relief', () => {
+  // Image 10x10 : noir (lum 0) = profondeur max.
+  const image = { id: 'i', name: 'i', src: '', x: 5, y: 5, width: 10, pixelSize: 1, minPower: 0, maxPower: 0, invert: false, cols: 10, rows: 10, data: new Uint8Array(100) }
+
+  it('ebauche par paliers : chaque passe enleve au plus depthPerPass', () => {
+    const paths = reliefPaths(image, { maxDepth: 4, invert: false, direction: 'x', mode: 'rough', allowance: 0.3, depthPerPass: 1, roughStepover: 1 })
+    const levels = [...new Set(paths.map((p) => Math.min(...p.points.map((q) => q.z ?? 0))))].sort((a, b) => b - a)
+    expect(levels).toEqual([-1, -2, -3])
+    // Les paliers sont dans l'ordre : on ne descend jamais de plus d'un palier.
+    let last = 0
+    for (const p of paths) {
+      const z = Math.min(...p.points.map((q) => q.z ?? 0))
+      expect(z).toBeGreaterThanOrEqual(last - 1 - 1e-9)
+      last = Math.min(last, z)
+    }
+  })
+
+  it('finition : profondeur exacte', () => {
+    const paths = reliefPaths(image, { maxDepth: 4, invert: false, direction: 'y', mode: 'finish' })
+    expect(Math.min(...paths.flatMap((p) => p.points.map((q) => q.z ?? 0)))).toBeCloseTo(-4)
+  })
+})

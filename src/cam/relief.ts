@@ -29,39 +29,55 @@ export function reliefPaths(image: LaserImage, options: ReliefOptions): CutPath[
   const pass = Math.max(0.1, options.depthPerPass ?? 1)
   const stride = rough ? Math.max(1, Math.round((options.roughStepover ?? image.pixelSize * 2) / image.pixelSize)) : 1
 
-  const zAt = (lum: number): number => {
+  // Ebauche : profondeur visee = relief + surepaisseur, arrondie au palier.
+  const roughTarget = (lum: number): number => {
     const target = -depth * depthFactor(lum, options.invert)
-    if (!rough) return target
     return Math.min(0, Math.ceil((target + allowance) / pass) * pass)
   }
+  const finishAt = (lum: number): number => -depth * depthFactor(lum, options.invert)
 
-  if (options.direction === 'x') {
+  // Lignes de balayage (serpentin), chacune = suite d'echantillons (x, y, luminosite).
+  const scanLines: Array<Array<{ x: number; y: number; lum: number }>> = []
+  const across = options.direction === 'x'
+  const outer = across ? image.rows : image.cols
+  const inner = across ? image.cols : image.rows
+  for (let a = 0; a < outer; a += stride) {
+    const line: Array<{ x: number; y: number; lum: number }> = []
+    for (let b = 0; b < inner; b++) {
+      const row = across ? a : b
+      const col = across ? b : a
+      line.push({
+        x: x0 + (col + 0.5) * image.pixelSize,
+        y: y0 + (row + 0.5) * image.pixelSize,
+        lum: image.data[row * image.cols + col],
+      })
+    }
+    scanLines.push(line)
+  }
+
+  const emit = (zOf: (sample: { lum: number }) => number, skipAbove?: number) => {
     let flip = false
-    for (let row = 0; row < image.rows; row += stride) {
-      const y = y0 + (row + 0.5) * image.pixelSize
-      const points: CutPoint[] = []
-      for (let col = 0; col < image.cols; col++) {
-        const x = x0 + (col + 0.5) * image.pixelSize
-        points.push({ x, y, z: zAt(image.data[row * image.cols + col]) })
-      }
+    for (const line of scanLines) {
+      const points: CutPoint[] = line.map((sample) => ({ x: sample.x, y: sample.y, z: zOf(sample) }))
+      // Rien a enlever sur cette ligne a ce palier.
+      if (skipAbove !== undefined && points.every((p) => (p.z ?? 0) >= skipAbove - 1e-9)) continue
       if (flip) points.reverse()
       flip = !flip
       paths.push({ points, closed: false, z: 0 })
     }
-    return paths
   }
 
-  let flip = false
-  for (let col = 0; col < image.cols; col += stride) {
-    const x = x0 + (col + 0.5) * image.pixelSize
-    const points: CutPoint[] = []
-    for (let row = 0; row < image.rows; row++) {
-      const y = y0 + (row + 0.5) * image.pixelSize
-      points.push({ x, y, z: zAt(image.data[row * image.cols + col]) })
-    }
-    if (flip) points.reverse()
-    flip = !flip
-    paths.push({ points, closed: false, z: 0 })
+  if (!rough) {
+    emit((sample) => finishAt(sample.lum))
+    return paths
+  }
+  // Ebauche par paliers : jamais plus d'une passe (depthPerPass) de matiere a la fois.
+  const deepest = Math.min(0, ...scanLines.flat().map((sample) => roughTarget(sample.lum)))
+  const levels = Math.ceil(-deepest / pass - 1e-9)
+  for (let k = 1; k <= levels; k++) {
+    const levelZ = -k * pass
+    const previous = -(k - 1) * pass
+    emit((sample) => Math.max(roughTarget(sample.lum), levelZ), previous)
   }
   return paths
 }

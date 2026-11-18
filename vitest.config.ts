@@ -8,5 +8,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // fetch() des fichiers du projet (polices) servis depuis le disque.
+    setupFiles: ['test/setup.ts'],
   },
 })

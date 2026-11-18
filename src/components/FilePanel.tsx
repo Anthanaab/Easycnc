@@ -9,6 +9,7 @@ export function FilePanel() {
   const connected = useStore((s) => s.connected)
   const fileName = useStore((s) => s.fileName)
   const toolpath = useStore((s) => s.toolpath)
+  const parsing = useStore((s) => s.parsing)
   const stream = useStore((s) => s.stream)
   const loadFile = useStore((s) => s.loadFile)
   const startStream = useStore((s) => s.startStream)
@@ -179,6 +180,7 @@ export function FilePanel() {
       {laserMismatch && <p className="warn notes">{t('Programme LASER : activez $32=1 (onglet Laser) avant de lancer.')}</p>}
       {millMismatch && <p className="warn notes">{t('$32=1 (mode laser) est actif : programme de fraisage bloqué. Mettez $32=0.')}</p>}
 
+      {parsing && <p className="notes">{t('Analyse du G-code…')}</p>}
       {toolpath && (
         <div className="file-stats">
           <span>{toolpath.lines} {t('lignes')}</span>

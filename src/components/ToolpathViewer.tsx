@@ -242,16 +242,35 @@ export function ToolpathViewer() {
 }
 
 function applyToolpath(refs: SceneRefs, toolpath: Toolpath | null): void {
-  const cutPositions: number[] = []
-  const rapidPositions: number[] = []
   const segments = toolpath?.segments ?? []
+  // Tableaux types pre-alloues (gros fichiers : centaines de milliers de segments).
+  let rapidCount = 0
+  for (const segment of segments) if (segment.rapid) rapidCount++
+  const cutPositions = new Float32Array((segments.length - rapidCount) * 6)
+  const rapidPositions = new Float32Array(rapidCount * 6)
   const donePositions = new Float32Array(segments.length * 6)
   const doneLines = new Int32Array(segments.length)
+  let ci = 0
+  let ri = 0
 
   segments.forEach((segment, i) => {
-    const target = segment.rapid ? rapidPositions : cutPositions
-    target.push(segment.from.x, segment.from.y, segment.from.z, segment.to.x, segment.to.y, segment.to.z)
-    donePositions.set([segment.from.x, segment.from.y, segment.from.z, segment.to.x, segment.to.y, segment.to.z], i * 6)
+    const { from, to } = segment
+    let target = cutPositions
+    let offset = ci
+    if (segment.rapid) {
+      target = rapidPositions
+      offset = ri
+      ri += 6
+    } else {
+      ci += 6
+    }
+    target[offset] = from.x
+    target[offset + 1] = from.y
+    target[offset + 2] = from.z
+    target[offset + 3] = to.x
+    target[offset + 4] = to.y
+    target[offset + 5] = to.z
+    donePositions.set(target.subarray(offset, offset + 6), i * 6)
     // Monotone pour la recherche dichotomique.
     doneLines[i] = Math.max(segment.line ?? 0, i ? doneLines[i - 1] : 0)
   })
@@ -295,9 +314,9 @@ function countBefore(lines: Int32Array, line: number): number {
   return lo
 }
 
-function setPositions(object: THREE.LineSegments, positions: number[]): void {
+function setPositions(object: THREE.LineSegments, positions: Float32Array): void {
   const geometry = object.geometry as THREE.BufferGeometry
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setDrawRange(0, positions.length / 3)
   geometry.computeBoundingSphere()
   object.visible = positions.length > 0
