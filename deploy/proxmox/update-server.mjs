@@ -6,7 +6,7 @@
 //   rebuild et deployer. Aucune entree utilisateur n'est passee au shell.
 import { spawn, execFile } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
-import { readFileSync, readdirSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { createServer } from 'node:http'
 
@@ -134,6 +134,118 @@ function authorized(req) {
   return given.length === expected.length && timingSafeEqual(given, expected)
 }
 
+// ----- Projets enregistres sur le serveur -----
+const PROJECTS_DIR = process.env.PROJECTS_DIR || `${homedir()}/projects`
+const MAX_PROJECT = 30 * 1024 * 1024
+
+/** Nom de fichier sur : base64url du nom (jamais de '/' ni de '..'). */
+function projectFile(name) {
+  return `${PROJECTS_DIR}/${Buffer.from(name, 'utf8').toString('base64url')}.json`
+}
+
+function validName(name) {
+  return typeof name === 'string' && name.trim().length > 0 && name.length <= 120 && !/[\u0000-\u001f]/.test(name)
+}
+
+function listProjects() {
+  let files = []
+  try {
+    files = readdirSync(PROJECTS_DIR).filter((f) => f.endsWith('.json'))
+  } catch {
+    return []
+  }
+  const out = []
+  for (const file of files) {
+    try {
+      const data = JSON.parse(readFileSync(`${PROJECTS_DIR}/${file}`, 'utf8'))
+      out.push({ name: data.name, date: data.date, thumbnail: data.thumbnail, shapes: data.shapes?.length ?? 0, size: statSync(`${PROJECTS_DIR}/${file}`).size })
+    } catch {
+      /* fichier illisible : ignore */
+    }
+  }
+  return out.sort((a, b) => (b.date ?? 0) - (a.date ?? 0))
+}
+
+function readBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        reject(new Error('Projet trop volumineux'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+async function handleProjects(req, res, url) {
+  const rest = url.pathname.slice('/api/projects'.length)
+  if (req.method === 'GET' && (rest === '' || rest === '/')) {
+    send(res, 200, listProjects())
+    return
+  }
+  const name = decodeURIComponent(rest.replace(/^\//, ''))
+  if (!validName(name)) {
+    send(res, 400, { error: 'Nom de projet invalide' })
+    return
+  }
+  const file = projectFile(name)
+  if (req.method === 'GET') {
+    try {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(readFileSync(file))
+    } catch {
+      send(res, 404, { error: 'Projet introuvable' })
+    }
+    return
+  }
+  // Ecritures : en-tete personnalise obligatoire (protection CSRF).
+  if (req.headers['x-easycnc'] !== 'projects') {
+    send(res, 403, { error: 'En-tete manquant' })
+    return
+  }
+  if (req.method === 'PUT') {
+    const body = await readBody(req, MAX_PROJECT)
+    let data
+    try {
+      data = JSON.parse(body)
+    } catch {
+      send(res, 400, { error: 'JSON invalide' })
+      return
+    }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.shapes)) {
+      send(res, 400, { error: 'Projet invalide' })
+      return
+    }
+    data.name = name
+    mkdirSync(PROJECTS_DIR, { recursive: true })
+    // Ecriture atomique : jamais de projet a moitie ecrit.
+    const tmp = `${file}.tmp`
+    writeFileSync(tmp, JSON.stringify(data))
+    renameSync(tmp, file)
+    send(res, 200, { saved: name })
+    return
+  }
+  if (req.method === 'DELETE') {
+    // Corbeille plutot que suppression definitive.
+    try {
+      mkdirSync(`${PROJECTS_DIR}/trash`, { recursive: true })
+      renameSync(file, `${PROJECTS_DIR}/trash/${Date.now()}-${file.split('/').pop()}`)
+      send(res, 200, { deleted: name })
+    } catch {
+      send(res, 404, { error: 'Projet introuvable' })
+    }
+    return
+  }
+  send(res, 405, { error: 'Methode non permise' })
+}
+
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
   res.end(JSON.stringify(body))
@@ -142,6 +254,10 @@ function send(res, status, body) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost')
   try {
+    if (url.pathname === '/api/projects' || url.pathname.startsWith('/api/projects/')) {
+      await handleProjects(req, res, url)
+      return
+    }
     if (req.method === 'GET' && url.pathname === '/api/update/status') {
       const [current, latest] = await Promise.all([localVersion(), remoteSha(url.searchParams.has('refresh'))])
       send(res, 200, {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   applyProject,
   currentProject,
@@ -9,6 +9,13 @@ import {
   saveProject,
 } from '../state/project'
 import { useT } from '../i18n'
+import {
+  deleteServerProject,
+  listServerProjects,
+  loadServerProject,
+  saveServerProject,
+  type ServerProjectInfo,
+} from '../state/serverProjects'
 import { useUiStore } from '../state/uiStore'
 import { Modal } from './Modal'
 
@@ -18,26 +25,75 @@ export function ProjectsModal() {
   const [name, setName] = useState('')
   const [message, setMessage] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  // null = serveur sans gestion des projets (local, hebergement statique).
+  const [serverProjects, setServerProjects] = useState<ServerProjectInfo[] | null>(null)
+  const [alsoServer, setAlsoServer] = useState(true)
   const t = useT()
 
   const refresh = () => setProjects(listProjects())
+  const refreshServer = () => void listServerProjects().then(setServerProjects)
+  useEffect(refreshServer, [])
 
-  const save = () => {
+  const save = async () => {
     if (!name.trim()) {
-      setMessage('Donnez un nom au projet')
+      setMessage(t('Donnez un nom au projet'))
       return
     }
-    saveProject(currentProject(name))
+    const project = currentProject(name.trim())
+    saveProject(project)
+    let text = t('Projet enregistré')
+    if (serverProjects && alsoServer) {
+      try {
+        await saveServerProject(project)
+        text = t('Projet enregistré (navigateur + serveur)')
+      } catch (error) {
+        text = `${t('Projet enregistré dans le navigateur, échec sur le serveur')} : ${error instanceof Error ? error.message : String(error)}`
+      }
+      refreshServer()
+    }
     setName('')
-    setMessage('Projet enregistré')
+    setMessage(text)
     refresh()
+  }
+
+  const toServer = async (projectName: string) => {
+    const project = projects.find((p) => p.name === projectName)
+    if (!project) return
+    try {
+      if (serverProjects?.some((p) => p.name === projectName) && !window.confirm(t('Remplacer le projet du même nom sur le serveur ?'))) return
+      await saveServerProject(project)
+      setMessage(`${t('Envoyé sur le serveur')} : ${projectName}`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+    refreshServer()
+  }
+
+  const openServer = async (projectName: string) => {
+    try {
+      const project = await loadServerProject(projectName)
+      applyProject(project)
+      setMessage(`${t('Projet ouvert depuis le serveur')} : ${projectName}`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const removeServer = async (projectName: string) => {
+    if (!window.confirm(t('Supprimer ce projet du serveur ? (il reste récupérable dans la corbeille du serveur)'))) return
+    try {
+      await deleteServerProject(projectName)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+    refreshServer()
   }
 
   const open = (projectName: string) => {
     const project = projects.find((p) => p.name === projectName)
     if (!project) return
     applyProject(project)
-    setMessage(`Projet « ${projectName} » ouvert`)
+    setMessage(`${t('Projet ouvert')} : ${projectName}`)
   }
 
   const remove = (projectName: string) => {
@@ -49,9 +105,15 @@ export function ProjectsModal() {
     <Modal title={t('Projets')} onClose={closeModal} wide>
       <div className="projects-save">
         <input value={name} placeholder={t('Nom du projet')} onChange={(e) => setName(e.target.value)} />
-        <button className="btn primary" onClick={save}>
+        <button className="btn primary" onClick={() => void save()}>
           {t('Enregistrer le projet actuel')}
         </button>
+        {serverProjects && (
+          <label className="check">
+            <input type="checkbox" checked={alsoServer} onChange={(e) => setAlsoServer(e.target.checked)} />
+            {t('aussi sur le serveur')}
+          </label>
+        )}
         <button className="btn" onClick={() => downloadProject(currentProject(name || 'projet'))}>
           {t('Exporter')}
         </button>
@@ -69,7 +131,7 @@ export function ProjectsModal() {
               try {
                 const project = parseProject(await file.text())
                 applyProject(project)
-                setMessage(`Projet « ${project.name} » importé`)
+                setMessage(`${t('Projet importé')} : ${project.name}`)
               } catch (error) {
                 setMessage(error instanceof Error ? error.message : 'Import impossible')
               }
@@ -80,6 +142,35 @@ export function ProjectsModal() {
       </div>
       {message && <p className="notes">{message}</p>}
 
+      {serverProjects && (
+        <>
+          <h3 className="sub">{t('Sur le serveur')} ({serverProjects.length})</h3>
+          <div className="project-list">
+            {serverProjects.map((project) => (
+              <div key={project.name} className="project-item">
+                {project.thumbnail && <img className="project-thumb" src={project.thumbnail} alt="" />}
+                <div className="project-info">
+                  <b>{project.name}</b>
+                  <div className="muted">
+                    {project.date ? new Date(project.date).toLocaleString() : '—'} · {project.shapes} {t('forme(s)')}
+                  </div>
+                </div>
+                <div className="project-actions">
+                  <button className="btn tiny" onClick={() => void openServer(project.name)}>
+                    {t('Ouvrir')}
+                  </button>
+                  <button className="btn tiny danger" onClick={() => void removeServer(project.name)}>
+                    {t('Supprimer')}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!serverProjects.length && <div className="empty">{t('Aucun projet sur le serveur.')}</div>}
+          </div>
+          <h3 className="sub">{t('Dans ce navigateur')} ({projects.length})</h3>
+        </>
+      )}
+
       <div className="project-list">
         {projects.map((project) => (
           <div key={project.name} className="project-item">
@@ -87,7 +178,7 @@ export function ProjectsModal() {
             <div className="project-info">
               <b>{project.name}</b>
               <div className="muted">
-                {new Date(project.date).toLocaleString()} · {project.shapes.length} forme(s) · {project.images.length} image(s)
+                {new Date(project.date).toLocaleString()} · {project.shapes.length} {t('forme(s)')} · {project.images.length} {t('image(s)')}
               </div>
             </div>
             <div className="project-actions">
@@ -97,6 +188,11 @@ export function ProjectsModal() {
               <button className="btn tiny" onClick={() => downloadProject(project)}>
                 {t('Exporter')}
               </button>
+              {serverProjects && (
+                <button className="btn tiny" onClick={() => void toServer(project.name)} title={t('Envoyer sur le serveur')}>
+                  ⇪ {t('Serveur')}
+                </button>
+              )}
               <button className="btn tiny danger" onClick={() => remove(project.name)}>
                 {t('Supprimer')}
               </button>

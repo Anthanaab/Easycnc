@@ -13,6 +13,7 @@ import { resumeProgram } from '../gcode/resume'
 import { detectJobType, parseGcode, type Toolpath } from '../gcode/parser'
 import { createLibraryActions } from './library'
 import { jobLimits, travelOf } from './limits'
+import { recordJobEnd, recordJobStart } from './jobHistory'
 import { notifyJob, requestJobNotifications } from './notify'
 import { loadJSON, saveJSON } from './persist'
 import { GcodeStreamer, parsePause, programLines, splitComment, type PauseReason, type StreamState } from '../gcode/streamer'
@@ -307,6 +308,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   softReset: () => {
     continuousJog = false
+    if (streamer.isRunning) recordJobEnd('stopped', streamer.acked, 'Reset')
     streamer.abort()
     pushLog('info', tr('Reset logiciel envoye'))
   },
@@ -556,11 +558,24 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => ({ stream: { ...state.stream, done: 0, startedAt: Date.now(), lineOffset: resumeOffset } }))
     if (dryRun) pushLog('info', tr('Essai à blanc : Z +{z} mm, broche coupée', { z: params.safeZ }))
     pushLog('info', tr('Demarrage du programme'))
+    const state = get()
+    recordJobStart({
+      file: state.fileName ?? '—',
+      jobType: state.jobType,
+      dryRun,
+      lines: lines.length,
+      material: state.materials.find((m) => m.id === state.materialId)?.name,
+      bit: state.bits.find((b) => b.id === state.bitId)?.name,
+      fromLine: fromLine && fromLine > 1 ? fromLine : undefined,
+    })
     await streamer.start()
   },
   pauseStream: () => streamer.pause(),
   resumeStream: () => streamer.resume(),
-  stopStream: () => streamer.stop(),
+  stopStream: () => {
+    if (streamer.isRunning) recordJobEnd('stopped', streamer.acked)
+    streamer.stop()
+  },
 
   clearLog: () => set({ log: [] }),
 }))
@@ -586,12 +601,14 @@ export const streamer = new GcodeStreamer(client, {
   onDone: () => {
     useStore.setState((state) => ({ stream: { ...state.stream, done: state.stream.total } }))
     pushLog('info', tr('Programme termine'))
+    recordJobEnd('done', streamer.total)
     notifyJob(tr('Programme terminé'), useStore.getState().fileName ?? '')
   },
   onError: (error) => {
     const msg = describeGrblCode(error.message)
     pushLog('error', tr('Erreur programme: {msg} — machine arrêtée (feed hold + reset)', { msg }))
     notifyJob(tr('Programme arrêté sur erreur'), msg)
+    recordJobEnd('error', streamer.acked, msg)
   },
 })
 

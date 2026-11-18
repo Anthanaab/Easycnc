@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type TabId = 'pilotage' | 'conception' | 'vue3d' | 'laser' | 'pcb' | 'relief' | 'reglages'
 
-export type ModalId = 'none' | 'projects' | 'tutorial'
+export type ModalId = 'none' | 'projects' | 'tutorial' | 'history'
 
 export type Theme = 'dark' | 'light'
 export type Language = 'fr' | 'en'

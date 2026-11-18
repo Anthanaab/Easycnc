@@ -63,6 +63,13 @@ update          # MAJ système (apt) + EasyCNC + configuration (nginx, service)
 > `bash /opt/easycnc/deploy/proxmox/install.sh` pour créer l'utilisateur
 > `easycnc`, le service et la configuration nginx.
 
+## Projets sur le serveur
+
+La fenêtre **Projets** propose d'enregistrer aussi les projets sur le serveur
+(`/var/lib/easycnc/projects`, un fichier JSON par projet) : ils sont retrouvés
+depuis n'importe quel poste. Une suppression les déplace dans `projects/trash/`
+(récupérables). Sauvegarde : copier ce dossier.
+
 ## Accès
 
 Ouvre `https://<ip>/` dans **Chrome/Edge**, accepte le certificat auto-signé

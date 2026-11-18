@@ -10,6 +10,7 @@ import { LaserTab } from './components/LaserTab'
 import { MachinePanel } from './components/MachinePanel'
 import { OffsetsPanel } from './components/OffsetsPanel'
 import { OverridesPanel } from './components/OverridesPanel'
+import { HistoryModal } from './components/HistoryModal'
 import { PcbTab } from './components/PcbTab'
 import { ProgramPauseCard } from './components/ProgramPauseCard'
 import { ProbePanel } from './components/ProbePanel'
@@ -167,6 +168,7 @@ export function App() {
       <ProgramPauseCard />
       {modal === 'projects' && <ProjectsModal />}
       {modal === 'tutorial' && <TutorialModal />}
+      {modal === 'history' && <HistoryModal />}
     </div>
   )
 }

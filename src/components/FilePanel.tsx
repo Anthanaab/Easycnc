@@ -3,6 +3,7 @@ import { estimateMinutes } from '../gcode/estimate'
 import { useT } from '../i18n'
 import { addRecentFile, getRecentFile, listRecentFiles, removeRecentFile, type RecentFile } from '../state/recentFiles'
 import { jobLimits, useStore } from '../state/store'
+import { useUiStore } from '../state/uiStore'
 
 export function FilePanel() {
   const connected = useStore((s) => s.connected)
@@ -111,9 +112,14 @@ export function FilePanel() {
     >
       <div className="panel-head">
         <h2>{t('Programme')}</h2>
-        <button className="btn tiny" disabled={running || paused} onClick={() => inputRef.current?.click()}>
-          {t('Ouvrir…')}
-        </button>
+        <div className="console-tools">
+          <button className="btn tiny" onClick={() => useUiStore.getState().openModal('history')}>
+            {t('Historique')}
+          </button>
+          <button className="btn tiny" disabled={running || paused} onClick={() => inputRef.current?.click()}>
+            {t('Ouvrir…')}
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"
