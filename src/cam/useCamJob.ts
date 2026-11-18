@@ -10,11 +10,16 @@ const EMPTY: CamJobResult = { result: { paths: [], warnings: [], bounds: null, m
  * Les demandes rapprochees sont fusionnees : seule la plus recente est calculee.
  */
 export function useCamJob(job: AnyJob, deps: unknown[]): { output: CamJobResult; pending: boolean; error: string | null } {
-  const [output, setOutput] = useState<CamJobResult>(EMPTY)
+  return useAsyncJob(computeJob, job, EMPTY, deps)
+}
+
+/** Version generique : calcul asynchrone (worker), resultats fusionnes, dernier gagnant. */
+export function useAsyncJob<I, O>(run: (input: I) => Promise<O>, job: I, empty: O, deps: unknown[]): { output: O; pending: boolean; error: string | null } {
+  const [output, setOutput] = useState<O>(empty)
   const [pending, setPending] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const busy = useRef(false)
-  const queued = useRef<AnyJob | null>(null)
+  const queued = useRef<I | null>(null)
   const alive = useRef(true)
 
   useEffect(() => {
@@ -34,7 +39,7 @@ export function useCamJob(job: AnyJob, deps: unknown[]): { output: CamJobResult;
         queued.current = null
         busy.current = true
         try {
-          const result = await computeJob(next)
+          const result = await run(next)
           if (!alive.current) return
           if (!queued.current) {
             setOutput(result)

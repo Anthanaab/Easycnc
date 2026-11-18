@@ -119,3 +119,35 @@ describe('surface de carte PCB', () => {
     expect(boardRegion([square(0, 0, 10)]).length).toBe(1)
   })
 })
+
+import { computePcb } from '../cam/pcbJob'
+
+describe('calcul PCB complet', () => {
+  it('cuivre -> isolation, perçage, detourage, origine au coin + marge', () => {
+    const copper = parseGerber(GERBER).paths
+    const out = computePcb({
+      top: [copper],
+      bottom: [],
+      outline: [],
+      holes: parseDrill(DRILL).holes,
+      mirrorBottom: false,
+      margin: 5,
+      toolRadius: 0.1,
+      isoGap: 0.1,
+      isoPasses: 2,
+      isoStepover: 0.15,
+      isoDepth: 0.1,
+      drillDepth: 1.8,
+      outlineDepth: 1.6,
+      tabs: { enabled: false, width: 3, height: 0.8, spacing: 30 },
+      doc: 0.8,
+      clearance: 0.3,
+      clearingStepover: 0.3,
+    })
+    expect(out.isolation.length).toBeGreaterThan(0)
+    expect(out.drills.length).toBe(3)
+    expect(out.contours.length).toBe(2) // 2 passes de 0,8 mm
+    expect(out.bounds!.min.x).toBeCloseTo(5, 0)
+    expect(out.isolation.every((p) => p.z === -0.1)).toBe(true)
+  })
+})

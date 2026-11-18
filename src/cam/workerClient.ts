@@ -1,5 +1,6 @@
 import type { Toolpath } from '../gcode/parser'
 import { runAnyJob, type AnyJob, type CamJobResult } from './camJob'
+import { computePcb, type PcbInput, type PcbOutput } from './pcbJob'
 
 // Client du Web Worker de calcul (FAO + analyse de G-code). Repli sur le fil
 // principal si le worker est indisponible (vieux navigateur, erreur de chargement).
@@ -54,4 +55,9 @@ export function computeJob(job: AnyJob): Promise<CamJobResult> {
 /** Analyse d'un G-code (apercu, emprise, duree) hors du fil principal. */
 export function parseGcodeInWorker(source: string): Promise<Toolpath> {
   return call({ parse: source }, async () => (await import('../gcode/parser')).parseGcode(source))
+}
+
+/** Calcul PCB (fusion du cuivre, isolation, degagement...) hors du fil principal. */
+export function computePcbInWorker(input: PcbInput): Promise<PcbOutput> {
+  return call({ pcb: input }, async () => computePcb(input))
 }

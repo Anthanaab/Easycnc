@@ -11,19 +11,10 @@ import {
   type GerberResult,
   type Hole,
 } from '../cam/gerber'
-import {
-  applyLeveling,
-  clearingPaths,
-  combineCopper,
-  drillPaths,
-  isolationPaths,
-  makeLevelMap,
-  mirrorX,
-  boardRegion,
-  outlinePaths,
-  translatePaths,
-  type LevelMap,
-} from '../cam/pcb'
+import { applyLeveling, makeLevelMap, type LevelMap } from '../cam/pcb'
+import { EMPTY_PCB } from '../cam/pcbJob'
+import { useAsyncJob } from '../cam/useCamJob'
+import { computePcbInWorker } from '../cam/workerClient'
 import type { CutPath } from '../cam/toolpath'
 import type { Bounds, Point } from '../cam/types'
 import { useT, useTf } from '../i18n'
@@ -56,20 +47,6 @@ function NumberField({
       <input type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   )
-}
-
-function boundsOf(points: Array<{ x: number; y: number }>): Bounds | null {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const p of points) {
-    minX = Math.min(minX, p.x)
-    minY = Math.min(minY, p.y)
-    maxX = Math.max(maxX, p.x)
-    maxY = Math.max(maxY, p.y)
-  }
-  return Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null
 }
 
 export function PcbTab() {
@@ -105,57 +82,32 @@ export function PcbTab() {
 
   const toolRadius = (bit?.diameter ?? 0.2) / 2
 
-  const derived = useMemo(() => {
-    const topLayers = entries.filter((e) => e.kind === 'copper-top' && e.gerber).map((e) => e.gerber!.paths)
-    const bottomLayers = entries.filter((e) => e.kind === 'copper-bottom' && e.gerber).map((e) => e.gerber!.paths)
-    const outlineLayers = entries.filter((e) => e.kind === 'outline' && e.gerber).map((e) => e.gerber!.paths)
-    const holes: Hole[] = entries.filter((e) => e.kind === 'drill' && e.drill).flatMap((e) => e.drill!.holes)
-
-    const raw = [...topLayers, ...bottomLayers]
-    let copper = combineCopper(raw)
-    let outline = outlineLayers.flat()
-    if (!copper.length && !outline.length) {
-      return { copper: [] as Point[][], outline: [] as Point[][], board: [] as Point[][], holes, bounds: null as Bounds | null }
-    }
-    const boardPoints = [...copper.flat(), ...outline.flat(), ...holes.map((h) => ({ x: h.x, y: h.y }))]
-    const bbox = boundsOf(boardPoints)
-    if (!bbox) return { copper: [] as Point[][], outline: [] as Point[][], board: [] as Point[][], holes, bounds: null as Bounds | null }
-
-    if (mirrorBottom && bottomLayers.length) {
-      const mirrored = bottomLayers.flatMap((layer) => mirrorX(layer, bbox))
-      copper = combineCopper([...topLayers, mirrored])
-    }
-    const dx = -bbox.min.x + margin
-    const dy = -bbox.min.y + margin
-    copper = translatePaths(copper, dx, dy)
-    outline = outline.length ? translatePaths(outline, dx, dy) : rectangle(boundsOf(copper.flat())!, 0)
-    const movedHoles = holes.map((h) => ({ ...h, x: h.x + dx, y: h.y + dy }))
-    const bounds = boundsOf([...copper.flat(), ...outline.flat()])
-    return { copper, outline, board: boardRegion(outline), holes: movedHoles, bounds }
-  }, [entries, mirrorBottom, margin])
-
-  const isolation = useMemo<CutPath[]>(() => {
-    if (!derived.copper.length) return []
-    return isolationPaths(derived.copper, {
+  // Fusion du cuivre, isolation, perçage, détourage et dégagement : dans le worker.
+  const { output: derived, pending: computing } = useAsyncJob(
+    computePcbInWorker,
+    {
+      top: entries.filter((e) => e.kind === 'copper-top' && e.gerber).map((e) => e.gerber!.paths),
+      bottom: entries.filter((e) => e.kind === 'copper-bottom' && e.gerber).map((e) => e.gerber!.paths),
+      outline: entries.filter((e) => e.kind === 'outline' && e.gerber).map((e) => e.gerber!.paths),
+      holes: entries.filter((e) => e.kind === 'drill' && e.drill).flatMap((e) => e.drill!.holes),
+      mirrorBottom,
+      margin,
       toolRadius,
-      gap: isoGap,
-      passes: isoPasses,
-      stepover: isoStepover,
-      depth: isoDepth,
-    })
-  }, [derived.copper, toolRadius, isoGap, isoPasses, isoStepover, isoDepth])
-
-  const drills = useMemo(() => drillPaths(derived.holes, drillDepth, false), [derived.holes, drillDepth])
-  const contours = useMemo<CutPath[]>(() => outlinePaths(derived.board, outlineDepth, tabs, params.doc, toolRadius), [derived.board, outlineDepth, tabs, params.doc, toolRadius])
-  const clearing = useMemo<CutPath[]>(() => {
-    if (!derived.board.length || !derived.copper.length) return []
-    return clearingPaths(derived.board, derived.copper, {
-      toolRadius,
+      isoGap,
+      isoPasses,
+      isoStepover,
+      isoDepth,
+      drillDepth,
+      outlineDepth,
+      tabs,
+      doc: params.doc,
       clearance,
-      stepover: clearingStepover,
-      depth: isoDepth,
-    })
-  }, [derived.board, derived.copper, toolRadius, clearance, clearingStepover, isoDepth])
+      clearingStepover,
+    },
+    EMPTY_PCB,
+    [entries, mirrorBottom, margin, toolRadius, isoGap, isoPasses, isoStepover, isoDepth, drillDepth, outlineDepth, tabs, params.doc, clearance, clearingStepover],
+  )
+  const { isolation, drills, contours, clearing } = derived
 
   // Nivellement : isolation, degagement et percage (passes peu profondes ou
   // qui doivent traverser la carte). Le detourage traverse : inutile.
@@ -313,7 +265,7 @@ export function PcbTab() {
             <span>{t('Fraise')} Ø {(toolRadius * 2).toFixed(2)} mm</span>
             <span>{isolation.length} {t('parcours')}</span>
           </div>
-          <button className="btn primary" style={{ width: '100%' }} disabled={!isolation.length} onClick={() => load('isolation.nc', leveledIsolation)}>
+          <button className="btn primary" style={{ width: '100%' }} disabled={!isolation.length || computing} onClick={() => load('isolation.nc', leveledIsolation)}>
             {t('Isolation → Pilotage')}
           </button>
         </section>
@@ -329,10 +281,10 @@ export function PcbTab() {
             <span>{contours.length} {t('segments')}</span>
           </div>
           <div className="two-grid">
-            <button className="btn" disabled={!drills.length} onClick={() => load('percage.nc', leveledDrills)}>
+            <button className="btn" disabled={!drills.length || computing} onClick={() => load('percage.nc', leveledDrills)}>
               {t('Perçage')}
             </button>
-            <button className="btn" disabled={!contours.length} onClick={() => load('detourage.nc', contours)}>
+            <button className="btn" disabled={!contours.length || computing} onClick={() => load('detourage.nc', contours)}>
               {t('Détourage')}
             </button>
           </div>
@@ -342,7 +294,7 @@ export function PcbTab() {
             <NumberField label={t('Écartement (mm)')} value={clearance} step={0.05} onChange={setClearance} />
             <NumberField label={t('Recouvrement (mm)')} value={clearingStepover} step={0.05} onChange={setClearingStepover} />
           </div>
-          <button className="btn" style={{ width: '100%' }} disabled={!clearing.length} onClick={() => load('degage.nc', leveledClearing)}>
+          <button className="btn" style={{ width: '100%' }} disabled={!clearing.length || computing} onClick={() => load('degage.nc', leveledClearing)}>
             {t('Dégagement → Pilotage')} ({clearing.length} {t('parcours')})
           </button>
         </section>
@@ -389,17 +341,6 @@ export function PcbTab() {
       </div>
     </main>
   )
-}
-
-function rectangle(bounds: Bounds, margin: number): Point[][] {
-  return [
-    [
-      { x: bounds.min.x - margin, y: bounds.min.y - margin },
-      { x: bounds.max.x + margin, y: bounds.min.y - margin },
-      { x: bounds.max.x + margin, y: bounds.max.y + margin },
-      { x: bounds.min.x - margin, y: bounds.max.y + margin },
-    ],
-  ]
 }
 
 function PcbPreview({
@@ -487,4 +428,18 @@ function PcbPreview({
       <canvas ref={ref} style={{ width: size.width, height: size.height }} />
     </div>
   )
+}
+
+function boundsOf(points: Array<{ x: number; y: number }>): Bounds | null {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const p of points) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.x > maxX) maxX = p.x
+    if (p.y > maxY) maxY = p.y
+  }
+  return Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null
 }
