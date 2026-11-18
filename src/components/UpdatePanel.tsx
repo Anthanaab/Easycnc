@@ -12,6 +12,18 @@ interface ServerStatus {
   running: boolean
   lastResult: { ok: boolean; code: number; at: string } | null
   log: string[]
+  tokenRequired?: boolean
+  releases?: Array<{ name: string; sha: string; current: boolean }>
+}
+
+const TOKEN_KEY = 'easycnc.updateToken'
+
+function readToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    return ''
+  }
 }
 
 type Availability = 'loading' | 'ok' | 'unavailable'
@@ -25,6 +37,7 @@ export function UpdatePanel() {
   const [status, setStatus] = useState<ServerStatus | null>(null)
   const [error, setError] = useState('')
   const [checking, setChecking] = useState(false)
+  const [token, setToken] = useState(readToken)
   const jobActive = useStore((s) => s.stream.state !== 'idle')
   const appReady = useAppUpdate((s) => s.ready)
   const applyApp = useAppUpdate((s) => s.apply)
@@ -35,7 +48,8 @@ export function UpdatePanel() {
       const response = await fetch(`/api/update/status${force ? '?refresh' : ''}`, { cache: 'no-store' })
       const type = response.headers.get('content-type') ?? ''
       if (!response.ok || !type.includes('application/json')) {
-        setAvailability('unavailable')
+        // Deja connu : coupure passagere (redemarrage du service apres mise a jour).
+        setAvailability((previous) => (previous === 'ok' ? 'ok' : 'unavailable'))
         return null
       }
       const data = (await response.json()) as ServerStatus
@@ -43,7 +57,7 @@ export function UpdatePanel() {
       setAvailability('ok')
       return data
     } catch {
-      setAvailability('unavailable')
+      setAvailability((previous) => (previous === 'ok' ? 'ok' : 'unavailable'))
       return null
     }
   }, [])
@@ -65,10 +79,38 @@ export function UpdatePanel() {
     return () => window.clearInterval(timer)
   }, [status?.running, refresh])
 
+  const headers = (): Record<string, string> => ({ 'X-EasyCNC': 'update', ...(token ? { 'X-EasyCNC-Token': token } : {}) })
+
+  const rememberToken = (value: string) => {
+    setToken(value)
+    try {
+      // Session seulement : le code n'est pas garde apres fermeture du navigateur.
+      sessionStorage.setItem(TOKEN_KEY, value)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const switchTo = async (name: string) => {
+    setError('')
+    try {
+      const response = await fetch(`/api/update/switch?name=${encodeURIComponent(name)}`, { method: 'POST', headers: headers() })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string }
+        setError(body.error ?? `HTTP ${response.status}`)
+      } else {
+        checkForAppUpdate()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+    await refresh()
+  }
+
   const start = async () => {
     setError('')
     try {
-      const response = await fetch('/api/update', { method: 'POST', headers: { 'X-EasyCNC': 'update' } })
+      const response = await fetch('/api/update', { method: 'POST', headers: headers() })
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string }
         setError(body.error ?? `HTTP ${response.status}`)
@@ -140,6 +182,13 @@ export function UpdatePanel() {
             !status.remoteError && <p className="notes">{t('Le serveur est à jour.')}</p>
           )}
 
+          {status.tokenRequired && (
+            <label className="field">
+              <span>{t("Code d'accès (mise à jour)")}</span>
+              <input type="password" autoComplete="off" value={token} onChange={(e) => rememberToken(e.target.value)} />
+            </label>
+          )}
+
           <button
             className="btn primary"
             style={{ width: '100%' }}
@@ -160,6 +209,32 @@ export function UpdatePanel() {
             </p>
           )}
 
+          {status.releases && status.releases.length > 1 && (
+            <div className="update-releases">
+              <h3 className="sub">{t('Versions installées')}</h3>
+              {status.releases.map((release) => (
+                <div key={release.name} className="offset-row">
+                  <span>
+                    <b>{release.sha}</b> <span className="muted">{formatRelease(release.name)}</span>
+                  </span>
+                  {release.current ? (
+                    <span className="ok">{t('en service')}</span>
+                  ) : (
+                    <button
+                      className="btn tiny"
+                      disabled={status.running || jobActive}
+                      onClick={() => {
+                        if (window.confirm(t('Basculer le site sur cette version ? La page proposera ensuite de se recharger.'))) void switchTo(release.name)
+                      }}
+                    >
+                      {t('Utiliser')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {(status.running || status.log.length > 0) && (
             <pre className="update-log">{status.log.join('\n')}</pre>
           )}
@@ -167,4 +242,10 @@ export function UpdatePanel() {
       )}
     </section>
   )
+}
+
+/** releases/<sha>-AAAAMMJJhhmmss -> date lisible. */
+function formatRelease(name: string): string {
+  const m = /-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})\d{2}$/.exec(name)
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : ''
 }

@@ -98,8 +98,11 @@ Environment=APP_DIR=$APP_DIR
 Environment=WEB_DIR=$WEB_DIR
 Environment=BRANCH=$BRANCH
 Environment=PORT=8787
+# Code d'acces optionnel : UPDATE_TOKEN=... dans ce fichier.
+EnvironmentFile=-/etc/easycnc/updater.env
 ExecStart=/usr/bin/node $APP_DIR/deploy/proxmox/update-server.mjs
-Restart=on-failure
+Restart=always
+RestartSec=2
 NoNewPrivileges=true
 PrivateTmp=true
 

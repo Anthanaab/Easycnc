@@ -15,6 +15,8 @@ export function ProbePanel() {
   const unlock = useStore((s) => s.unlock)
 
   const probe = useStore((s) => s.probe)
+  const settings = useStore((s) => s.settings)
+  const setSetting = useStore((s) => s.setSetting)
   const setProbe = useStore((s) => s.setProbe)
   const runCornerProbe = useStore((s) => s.runCornerProbe)
   const bit = useStore((s) => s.bits.find((b) => b.id === s.bitId))
@@ -45,6 +47,19 @@ export function ProbePanel() {
         <span className={homed ? 'ok' : 'muted'}>{t(homed ? '● Origine machine connue' : '○ Origine machine inconnue')}</span>
         {alarm && <span className="warn">{t('Alarme active')}</span>}
       </div>
+
+      {settings[20] === '0' && (settings[22] === '1' || machine?.homing) && (
+        <div className="notes warn">
+          {t('Limites logicielles désactivées ($20=0) : GRBL ne bloque pas les déplacements hors course.')}{' '}
+          {settings[22] === '1' ? (
+            <button className="btn tiny" disabled={!connected} onClick={() => void setSetting(20, 1)}>
+              {t('Activer ($20=1)')}
+            </button>
+          ) : (
+            t('Activez d\'abord le homing ($22=1).')
+          )}
+        </div>
+      )}
 
       {alarm && (
         <button className="btn danger" onClick={unlock}>

@@ -44,6 +44,15 @@ fois terminé, un bandeau propose de **recharger la page**.
 - Le service `easycnc-updater` tourne sous un utilisateur dédié `easycnc`
   (pas root) et ne peut qu'avancer sur la branche officielle (fast-forward).
 
+- **Revenir à une version précédente** : liste « Versions installées » (les 2
+  dernières sont conservées), bouton « Utiliser ».
+- **Code d'accès (optionnel)** : pour que seuls ceux qui le connaissent puissent
+  lancer une mise à jour :
+  ```bash
+  mkdir -p /etc/easycnc && echo 'UPDATE_TOKEN=un-code-long' > /etc/easycnc/updater.env
+  chmod 600 /etc/easycnc/updater.env && systemctl restart easycnc-updater
+  ```
+
 **En ligne de commande** (dans le conteneur, en root) :
 
 ```bash
