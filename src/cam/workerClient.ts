@@ -1,4 +1,5 @@
 import type { Toolpath } from '../gcode/parser'
+import { coreLanguage } from '../i18nCore'
 import { runAnyJob, type AnyJob, type CamJobResult } from './camJob'
 import { computePcb, type PcbInput, type PcbOutput } from './pcbJob'
 
@@ -44,7 +45,8 @@ function call<T>(message: Record<string, unknown>, fallback: () => Promise<T>): 
     }
     w.addEventListener('message', onMessage)
     w.addEventListener('error', onError)
-    w.postMessage({ id, ...message })
+    // Langue transmise : les avertissements calcules dans le worker sont traduits.
+    w.postMessage({ id, lang: coreLanguage(), ...message })
   })
 }
 

@@ -1,5 +1,6 @@
 import { tokenHeader } from './accessToken'
 import type { ProjectData } from './project'
+import { trc } from '../i18nCore'
 
 // Projets enregistres sur le serveur EasyCNC (installation Proxmox/LXC).
 // Indisponible en local ou sur un hebergement statique : les fonctions le signalent.
@@ -33,7 +34,7 @@ export async function listServerProjects(): Promise<ServerProjectInfo[] | null |
 
 export async function loadServerProject(name: string): Promise<ProjectData> {
   const response = await fetch(`${BASE}/${encodeURIComponent(name)}`, { cache: 'no-store', headers: tokenHeader() })
-  if (!response.ok || !isJson(response)) throw new Error(`Projet introuvable (${response.status})`)
+  if (!response.ok || !isJson(response)) throw new Error(trc('Projet introuvable ({status})', { status: response.status }))
   return (await response.json()) as ProjectData
 }
 
@@ -60,7 +61,7 @@ export async function deleteServerProject(name: string): Promise<void> {
 /** Sauvegarde : tous les projets du serveur dans un fichier JSON telecharge. */
 export async function exportServerProjects(): Promise<number> {
   const response = await fetch(`${BASE}/_export`, { cache: 'no-store', headers: tokenHeader() })
-  if (!response.ok || !isJson(response)) throw new Error(`Export impossible (${response.status})`)
+  if (!response.ok || !isJson(response)) throw new Error(trc('Export impossible ({status})', { status: response.status }))
   const bundle = (await response.json()) as { projects: ProjectData[] }
   const blob = new Blob([JSON.stringify(bundle)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -75,7 +76,7 @@ export async function exportServerProjects(): Promise<number> {
 /** Restaure une sauvegarde (fichier d'export) sur le serveur. */
 export async function importServerProjects(json: string): Promise<number> {
   const bundle = JSON.parse(json) as { format?: string; projects?: unknown }
-  if (bundle.format !== 'easycnc-projects' || !Array.isArray(bundle.projects)) throw new Error('Fichier de sauvegarde invalide')
+  if (bundle.format !== 'easycnc-projects' || !Array.isArray(bundle.projects)) throw new Error(trc('Fichier de sauvegarde invalide'))
   let count = 0
   for (const project of bundle.projects as ProjectData[]) {
     if (!project || typeof project.name !== 'string' || !Array.isArray(project.shapes)) continue

@@ -1,4 +1,5 @@
 import type { Vec3 } from '../grbl/types'
+import { trc } from '../i18nCore'
 
 export interface Segment {
   from: Vec3
@@ -173,7 +174,7 @@ export function parseGcode(source: string, options: { arcTolerance?: number } = 
       const code = Math.floor(g * 10) / 10
       if (code === 17 || code === 18 || code === 19) {
         state.plane = code as 17 | 18 | 19
-        if (code !== 17) warnings.add('Seul le plan G17 (XY) est supporte pour les arcs.')
+        if (code !== 17) warnings.add(trc('Seul le plan G17 (XY) est supporte pour les arcs.'))
         continue
       }
       if (code === 20) state.scale = 25.4
@@ -191,15 +192,15 @@ export function parseGcode(source: string, options: { arcTolerance?: number } = 
         continue
       } else if (code === 53) {
         // Coordonnees machine : position inconnue dans le repere de travail.
-        warnings.add('Mouvements G53 (coordonnees machine) non representes dans l\'apercu.')
+        warnings.add(trc("Mouvements G53 (coordonnees machine) non representes dans l'apercu."))
         bypassMotion = true
         continue
       } else if (code === 28 || code === 30) {
-        warnings.add(`G${code} (retour a une position memorisee) non represente dans l'apercu.`)
+        warnings.add(trc("G{code} (retour a une position memorisee) non represente dans l'apercu.", { code }))
         bypassMotion = true
         continue
       } else if (code >= 38.2 && code <= 38.5) {
-        warnings.add('Palpage G38.x dans le programme : profondeur reelle inconnue.')
+        warnings.add(trc('Palpage G38.x dans le programme : profondeur reelle inconnue.'))
         bypassMotion = true
         continue
       } else if (NON_MOTION_G_CODES.has(code)) {
@@ -209,7 +210,7 @@ export function parseGcode(source: string, options: { arcTolerance?: number } = 
         // Dwell / offsets / modes non geometriques: sans effet sur l'apercu.
         continue
       } else {
-        warnings.add(`Commande G${code} ignoree dans l'apercu.`)
+        warnings.add(trc("Commande G{code} ignoree dans l'apercu.", { code }))
         continue
       }
     }

@@ -1,6 +1,7 @@
 import { Clipper, ClipperOffset, ClipType, EndType, JoinType, PolyFillType, PolyType } from 'clipper-lib'
 import type { Path, Paths } from 'clipper-lib'
 import type { Bounds, Point } from './types'
+import { trc } from '../i18nCore'
 
 const SC = 1000
 const TOL = 0.004
@@ -199,7 +200,7 @@ function macroShape(def: string[], params: number[], warn: (m: string) => void):
         pts.push([cx + (d / 2) * Math.cos(a), cy + (d / 2) * Math.sin(a)])
       }
       apply(ex, rotPts(pts, rot))
-    } else warn(`macro : primitive ${code} ignorée`)
+    } else warn(trc('macro : primitive {code} ignorée', { code }))
   }
   return acc
 }
@@ -333,7 +334,7 @@ export function parseGerber(text: string): GerberResult {
       ap.paths = sh
       return ap.paths
     } else {
-      warn('ouverture inconnue ' + ap.t)
+      warn(trc('ouverture inconnue {name}', { name: ap.t }))
       return []
     }
     ap.paths = [orient(toClip(pts))]
@@ -450,7 +451,7 @@ export function parseGerber(text: string): GerberResult {
           flushStroke()
           S.polarity = 'C'
         } else if ((m = /^TF\.FileFunction,(.*)$/.exec(it))) attrs.function = m[1]
-        else if (it.startsWith('SR') && it !== 'SR') warn('répétition de motifs (SR) non gérée')
+        else if (it.startsWith('SR') && it !== 'SR') warn(trc('répétition de motifs (SR) non gérée'))
       }
       continue
     }
@@ -522,7 +523,7 @@ export function parseGerber(text: string): GerberResult {
       S.y = ny
       const ap = S.cur ? S.aps[S.cur] : null
       if (ap) pushObj(moved(apShape(ap), nx, ny))
-      else warn('pastille sans ouverture définie')
+      else warn(trc('pastille sans ouverture définie'))
     }
   }
   flushStroke()
@@ -627,13 +628,13 @@ export function parseDrill(text: string): DrillResult {
       const y: number = m[2] !== undefined ? val(m[2])! : lastPt ? lastPt[1] : 0
       lastPt = [x, y]
       if (cur === null || !tools[cur]) {
-        if (!warnings.includes('trou sans outil défini')) warnings.push('trou sans outil défini')
+        if (!warnings.includes(trc('trou sans outil défini'))) warnings.push(trc('trou sans outil défini'))
         continue
       }
       holes.push({ x, y, d: tools[cur] })
     }
   }
-  if (slots.length) warnings.push(`${slots.length} trou(s) oblong(s) (G85) non usiné(s)`)
+  if (slots.length) warnings.push(trc('{n} trou(s) oblong(s) (G85) non usiné(s)', { n: slots.length }))
   return { holes, slots, tools, warnings }
 }
 

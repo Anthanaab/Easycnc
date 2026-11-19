@@ -2,6 +2,7 @@ import type { CutParams } from '../data/params'
 import { boundsOfPoints, mergeBounds, shapeLoops } from './geometry'
 import { normalizeLoops, offsetLoops } from './offset'
 import type { Bounds, Point, Shape, SurfacingSettings, TabsSettings } from './types'
+import { trc } from '../i18nCore'
 
 export interface CutPoint extends Point {
   z?: number
@@ -118,7 +119,7 @@ export function generateToolpath(
     }
     if (!(shape.depth > 0)) continue
     if (tool.cutLength && shape.depth > tool.cutLength + 1e-6) {
-      warnings.push(`${shape.name} : profondeur ${shape.depth} mm > longueur de coupe de la fraise (${tool.cutLength} mm).`)
+      warnings.push(trc('{name} : profondeur {d} mm > longueur de coupe de la fraise ({l} mm).', { name: shape.name, d: shape.depth, l: tool.cutLength }))
     }
 
     if (shape.op === 'vcarve') {
@@ -132,7 +133,7 @@ export function generateToolpath(
     const tabZ = options.tabs?.enabled && isProfile ? -shape.depth + options.tabs.height : null
     const stepover = Math.min(positive(params.stepover, radius), radius * 2 * 0.95)
     if (shape.op === 'pocket' && params.stepover > radius * 2 * 0.95) {
-      warnings.push(`${shape.name} : recouvrement > diamètre de fraise, limité à ${stepover.toFixed(2)} mm.`)
+      warnings.push(trc('{name} : recouvrement > diamètre de fraise, limité à {s} mm.', { name: shape.name, s: stepover.toFixed(2) }))
     }
     // Offsets sur des boucles normalisees (trous correctement orientes, ex. lettre « O »).
     const solid = shape.op === 'on' ? loops : normalizeLoops(loops)
@@ -162,20 +163,20 @@ export function generateToolpath(
       }
       if (shape.op === 'contour_in') {
         const inner = offsetLoops(solid, -radius)
-        if (!inner.length && level === 0) warnings.push(`${shape.name} : trop petit pour un contour intérieur à cette fraise.`)
+        if (!inner.length && level === 0) warnings.push(trc('{name} : trop petit pour un contour intérieur à cette fraise.', { name: shape.name }))
         for (const loop of inner) addClosed(loop, z, zPrev)
         continue
       }
       if (shape.op === 'pocket') {
         let ring = offsetLoops(solid, -radius)
-        if (!ring.length && level === 0) warnings.push(`${shape.name} : trop petit pour une poche à cette fraise.`)
+        if (!ring.length && level === 0) warnings.push(trc('{name} : trop petit pour une poche à cette fraise.', { name: shape.name }))
         let pass = 0
         while (ring.length && pass < 500) {
           for (const loop of ring) addClosed(loop, z, zPrev)
           pass++
           ring = offsetLoops(solid, -(radius + pass * stepover))
         }
-        if (pass >= 500) warnings.push(`${shape.name} : poche tronquée (trop de passes).`)
+        if (pass >= 500) warnings.push(trc('{name} : poche tronquée (trop de passes).', { name: shape.name }))
       }
     }
     tag()
@@ -257,7 +258,7 @@ function vcarveShape(
   const tanHalf = Math.tan((angle / 2) * (Math.PI / 180)) || 1
   const cap = Math.min(shape.depth > 0 ? shape.depth : Infinity, options.docMax ?? Infinity)
   if (!Number.isFinite(cap) || cap <= 0) {
-    warnings.push(`${shape.name} : V-carve nécessite une profondeur max (docMax de la fraise V).`)
+    warnings.push(trc('{name} : V-carve nécessite une profondeur max (docMax de la fraise V).', { name: shape.name }))
     return
   }
   const norm = normalizeLoops(loops)

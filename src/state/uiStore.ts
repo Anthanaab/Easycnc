@@ -5,7 +5,8 @@ export type TabId = 'pilotage' | 'conception' | 'vue3d' | 'laser' | 'pcb' | 'rel
 export type ModalId = 'none' | 'projects' | 'tutorial' | 'history'
 
 export type Theme = 'dark' | 'light'
-export type Language = 'fr' | 'en'
+export type { Language } from '../i18nCore'
+import type { Language } from '../i18nCore'
 
 function stored<T extends string>(key: string, fallback: T): T {
   try {

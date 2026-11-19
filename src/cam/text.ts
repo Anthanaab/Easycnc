@@ -5,6 +5,7 @@ import playfair700 from './fonts/playfair700.woff?url'
 import roboto400 from './fonts/roboto400.woff?url'
 import roboto700 from './fonts/roboto700.woff?url'
 import type { Point } from './types'
+import { trc } from '../i18nCore'
 
 export const FONTS = [
   { id: 'roboto400', label: 'Roboto' },
@@ -31,7 +32,7 @@ export function loadFonts(): Promise<void> {
       const entries = await Promise.all(
         Object.entries(FONT_URLS).map(async ([id, url]) => {
           const response = await fetch(url)
-          if (!response.ok) throw new Error(`Police ${id} introuvable (${response.status})`)
+          if (!response.ok) throw new Error(trc('Police {id} introuvable ({status})', { id, status: response.status }))
           return [id, ot.parse(await response.arrayBuffer())] as const
         }),
       )

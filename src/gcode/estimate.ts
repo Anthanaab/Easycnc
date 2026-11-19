@@ -1,4 +1,5 @@
 import type { Toolpath } from './parser'
+import { trc } from '../i18nCore'
 
 export interface EstimateOptions {
   /** Avance par defaut si le programme n'en donne pas (mm/min). */
@@ -92,6 +93,7 @@ export interface LimitCheck {
 export function checkLimits(
   bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } },
   area: { x: number; y: number; z: number },
+  options: { sizeOnly?: boolean } = {},
 ): LimitCheck {
   const width = bounds.max.x - bounds.min.x
   const height = bounds.max.y - bounds.min.y
@@ -99,17 +101,18 @@ export function checkLimits(
   const tol = 0.5
   const messages: string[] = []
   if (![area.x, area.y, area.z].every((v) => Number.isFinite(v) && v > 0)) {
-    messages.push('Course machine invalide dans le profil (X/Y/Z > 0 requis)')
+    messages.push(trc('Course machine invalide dans le profil (X/Y/Z > 0 requis)'))
   }
   const finiteBounds = [bounds.min.x, bounds.min.y, bounds.min.z, bounds.max.x, bounds.max.y, bounds.max.z].every(Number.isFinite)
-  if (!finiteBounds) messages.push('Emprise du programme invalide (valeurs non numeriques)')
-  if (width > area.x + tol) messages.push(`Largeur ${width.toFixed(1)} mm > course X ${area.x} mm`)
-  if (height > area.y + tol) messages.push(`Hauteur ${height.toFixed(1)} mm > course Y ${area.y} mm`)
-  if (depth > area.z + tol) messages.push(`Profondeur ${depth.toFixed(1)} mm > course Z ${area.z} mm`)
-  if (bounds.min.x < -tol) messages.push(`X négatif (${bounds.min.x.toFixed(1)} mm) — hors plateau`)
-  if (bounds.min.y < -tol) messages.push(`Y négatif (${bounds.min.y.toFixed(1)} mm) — hors plateau`)
-  if (bounds.max.x > area.x + tol) messages.push(`X max ${bounds.max.x.toFixed(1)} mm > ${area.x} mm`)
-  if (bounds.max.y > area.y + tol) messages.push(`Y max ${bounds.max.y.toFixed(1)} mm > ${area.y} mm`)
+  if (!finiteBounds) messages.push(trc('Emprise du programme invalide (valeurs non numeriques)'))
+  if (width > area.x + tol) messages.push(trc('Largeur {w} mm > course X {t} mm', { w: width.toFixed(1), t: area.x }))
+  if (height > area.y + tol) messages.push(trc('Hauteur {h} mm > course Y {t} mm', { h: height.toFixed(1), t: area.y }))
+  if (depth > area.z + tol) messages.push(trc('Profondeur {d} mm > course Z {t} mm', { d: depth.toFixed(1), t: area.z }))
+  if (options.sizeOnly) return { ok: messages.length === 0, width, height, depth, messages }
+  if (bounds.min.x < -tol) messages.push(trc('X négatif ({v} mm) — hors plateau', { v: bounds.min.x.toFixed(1) }))
+  if (bounds.min.y < -tol) messages.push(trc('Y négatif ({v} mm) — hors plateau', { v: bounds.min.y.toFixed(1) }))
+  if (bounds.max.x > area.x + tol) messages.push(trc('X max {v} mm > {t} mm', { v: bounds.max.x.toFixed(1), t: area.x }))
+  if (bounds.max.y > area.y + tol) messages.push(trc('Y max {v} mm > {t} mm', { v: bounds.max.y.toFixed(1), t: area.y }))
   return { ok: messages.length === 0, width, height, depth, messages }
 }
 
@@ -146,9 +149,9 @@ export function checkMachineLimits(
     const label = axis.toUpperCase()
     const [rangeLo, rangeHi] = space === 'pos' ? [0, max] : [-max, 0]
     if (axis === 'z' && hi > rangeHi + tol) {
-      messages.push(`Z monte jusqu'a ${hi.toFixed(1)} (machine) > ${rangeHi} : Z de securite trop haut ou Z0 trop proche du haut`)
+      messages.push(trc("Z monte jusqu'a {z} (machine) > {max} : Z de securite trop haut ou Z0 trop proche du haut", { z: hi.toFixed(1), max: rangeHi }))
     } else {
-      messages.push(`${label} machine ${lo.toFixed(1)}…${hi.toFixed(1)} hors course [${rangeLo}, ${rangeHi}]`)
+      messages.push(trc('{axis} machine {lo}…{hi} hors course [{min}, {max}]', { axis: label, lo: lo.toFixed(1), hi: hi.toFixed(1), min: rangeLo, max: rangeHi }))
     }
   }
   return {

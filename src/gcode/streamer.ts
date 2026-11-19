@@ -1,5 +1,6 @@
 import type { GrblClient } from '../grbl/GrblClient'
 import { stripComments } from './parser'
+import { trc } from '../i18nCore'
 
 export type StreamState = 'idle' | 'running' | 'paused'
 
@@ -119,7 +120,7 @@ export class GcodeStreamer {
   }
 
   loadLines(lines: string[]): void {
-    if (this.running) throw new Error('Programme en cours : arretez-le avant d\'en charger un autre')
+    if (this.running) throw new Error(trc("Programme en cours : arretez-le avant d'en charger un autre"))
     this.lines = lines.map((line) => line.trim()).filter((line) => line.length > 0)
   }
 

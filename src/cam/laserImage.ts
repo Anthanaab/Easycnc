@@ -1,4 +1,5 @@
 import type { CutPath } from './toolpath'
+import { trc } from '../i18nCore'
 
 export interface LaserImage {
   id: string
@@ -26,7 +27,7 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Image illisible'))
+    img.onerror = () => reject(new Error(trc('Image illisible')))
     img.src = src
   })
 }
@@ -40,7 +41,7 @@ export async function sampleImage(src: string, widthMm: number, pixelSize: numbe
   canvas.width = cols
   canvas.height = rows
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas indisponible')
+  if (!ctx) throw new Error(trc('Canvas indisponible'))
   ctx.drawImage(img, 0, 0, cols, rows)
   const pixels = ctx.getImageData(0, 0, cols, rows).data
   const data = new Uint8Array(cols * rows)

@@ -7,6 +7,7 @@ import type { Bit, MachineProfile } from '../data/types'
 import type { CutParams } from '../data/params'
 import { useCamStore } from '../cam/camStore'
 import { useStore } from './store'
+import { trc } from '../i18nCore'
 
 export const PROJECTS_KEY = 'projects'
 
@@ -202,7 +203,7 @@ export function downloadProject(project: ProjectData): void {
 export function parseProject(json: string): ProjectData {
   const data = JSON.parse(json) as ProjectData
   if (!data || typeof data !== 'object' || !Array.isArray(data.shapes)) {
-    throw new Error('Projet invalide')
+    throw new Error(trc('Projet invalide'))
   }
   return data
 }

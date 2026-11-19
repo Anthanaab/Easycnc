@@ -1,4 +1,5 @@
 import { parsePause, splitComment } from './streamer'
+import { trc } from '../i18nCore'
 
 export interface ResumePlan {
   /** Lignes a envoyer : preambule de reprise puis la suite du programme. */
@@ -25,7 +26,7 @@ function format(value: number): string {
  */
 export function resumeProgram(lines: string[], start: number, options: { safeZ: number; plunge: number; spinup?: number }): ResumePlan {
   if (!Number.isInteger(start) || start < 1 || start >= lines.length) {
-    throw new Error(`Ligne de reprise invalide (1 a ${lines.length - 1})`)
+    throw new Error(trc('Ligne de reprise invalide (1 a {max})', { max: lines.length - 1 }))
   }
   let metric = true
   let absolute = true
@@ -57,7 +58,7 @@ export function resumeProgram(lines: string[], start: number, options: { safeZ: 
         else if (value >= 54 && value <= 59 && Number.isInteger(value)) wcs = `G${value}`
         else if (value === 93 || value === 94) feedMode = `G${value}`
         else if (value === 92 || value === 53 || value === 28 || value === 30) {
-          throw new Error(`Reprise impossible : G${value} avant la ligne ${start + 1}`)
+          throw new Error(trc('Reprise impossible : G{code} avant la ligne {line}', { code: value, line: start + 1 }))
         } else if (value === 10 || value === 4 || (value >= 38 && value < 39)) nonModalAxes = true
       } else if (letter === 'M') {
         if (value === 3 || value === 4) spindle = value === 3 ? 'M3' : 'M4'
@@ -70,15 +71,15 @@ export function resumeProgram(lines: string[], start: number, options: { safeZ: 
     if (nonModalAxes) continue
     for (const { letter, value } of words) {
       if (letter === 'X' || letter === 'Y' || letter === 'Z') {
-        if (!absolute) throw new Error(`Reprise impossible : mode relatif (G91) avant la ligne ${start + 1}`)
+        if (!absolute) throw new Error(trc('Reprise impossible : mode relatif (G91) avant la ligne {line}', { line: start + 1 }))
         pos[letter] = value
       }
     }
   }
-  if (!absolute) throw new Error('Reprise impossible : programme en mode relatif (G91)')
+  if (!absolute) throw new Error(trc('Reprise impossible : programme en mode relatif (G91)'))
   // Arc modal (G2/G3) sans mot G sur la ligne de reprise : on ne peut pas le rejouer sans axes.
   if ((motion === 2 || motion === 3) && !/G\s*0*[0-3](?![0-9.])/i.test(splitComment(lines[start]).code)) {
-    throw new Error(`Reprise impossible au milieu d'un arc modal G${motion} : choisissez une autre ligne`)
+    throw new Error(trc("Reprise impossible au milieu d'un arc modal G{code} : choisissez une autre ligne", { code: motion }))
   }
 
   const unit = metric ? 1 : 1 / 25.4

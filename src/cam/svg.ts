@@ -1,4 +1,5 @@
 import type { Point } from './types'
+import { trc } from '../i18nCore'
 
 export interface SvgImportResult {
   groups: Point[][][]
@@ -127,7 +128,7 @@ export function importSvg(text: string): SvgImportResult {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
   const root = doc.documentElement
   if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) {
-    throw new Error('Fichier SVG invalide.')
+    throw new Error(trc('Fichier SVG invalide.'))
   }
   sanitizeSvg(root)
   const live = document.importNode(root, true) as unknown as SVGSVGElement

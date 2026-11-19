@@ -1,3 +1,5 @@
+import { trc } from '../i18nCore'
+
 const MAX_BUFFER = 64 * 1024
 
 export type LineHandler = (line: string) => void
@@ -30,7 +32,7 @@ export class SerialTransport {
   /** Ouvre le selecteur de port du navigateur puis ouvre le port choisi. */
   async requestAndOpen(baudRate: number): Promise<void> {
     if (!SerialTransport.isSupported()) {
-      throw new Error('Web Serial non supporte par ce navigateur (utilisez Chrome/Edge).')
+      throw new Error(trc('Web Serial non supporte par ce navigateur (utilisez Chrome/Edge).'))
     }
     const port = await navigator.serial.requestPort()
     await this.open(port, baudRate)
@@ -97,7 +99,7 @@ export class SerialTransport {
   }
 
   async write(data: string | Uint8Array): Promise<void> {
-    if (!this.writer) throw new Error('Port serie non ouvert')
+    if (!this.writer) throw new Error(trc('Port serie non ouvert'))
     const bytes = typeof data === 'string' ? this.encoder.encode(data) : data
     await this.writer.write(bytes)
   }

@@ -1,5 +1,6 @@
 import type { Bounds } from '../cam/types'
 import type { GrblClient } from './GrblClient'
+import { trc } from '../i18nCore'
 
 export interface ProbeGridOptions {
   safeZ: number
@@ -22,7 +23,7 @@ async function probeDown(client: GrblClient, distance: number, feed: number): Pr
     await client.send('G90').catch(() => undefined)
   }
   const probe = client.lastProbe
-  if (!probe || !probe.ok) throw new Error('Palpage sans contact')
+  if (!probe || !probe.ok) throw new Error(trc('Palpage sans contact'))
   return probe.pos.z
 }
 
@@ -43,7 +44,7 @@ export async function probeGrid(
   rows = Math.max(1, Math.round(rows))
   const values = [options.safeZ, options.retract, options.fast, options.maxDepth]
   if (values.some((v) => !Number.isFinite(v)) || options.fast <= 0 || options.maxDepth <= 0 || options.safeZ <= 0) {
-    throw new Error('Parametres de palpage invalides')
+    throw new Error(trc('Parametres de palpage invalides'))
   }
   const slow = Math.max(5, Math.min(options.slow ?? 25, options.fast))
   const heights: number[] = []

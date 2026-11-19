@@ -1,5 +1,6 @@
 import type { ProbeSettings } from '../data/types'
 import type { GrblClient } from './GrblClient'
+import { trc } from '../i18nCore'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -7,11 +8,11 @@ function sleep(ms: number): Promise<void> {
 
 function checkSettings(probe: ProbeSettings): void {
   const finite = [probe.fast, probe.feed, probe.maxDepth, probe.retract, probe.plate].every(Number.isFinite)
-  if (!finite) throw new Error('Parametres de palpage invalides')
-  if (probe.fast <= 0 || probe.feed <= 0) throw new Error('Avances de palpage invalides (> 0)')
-  if (probe.maxDepth <= 0) throw new Error('Course max de palpage invalide (> 0)')
-  if (probe.retract <= 0) throw new Error('Degagement de palpage invalide (> 0)')
-  if (probe.plate < 0) throw new Error('Epaisseur de plaque invalide (>= 0)')
+  if (!finite) throw new Error(trc('Parametres de palpage invalides'))
+  if (probe.fast <= 0 || probe.feed <= 0) throw new Error(trc('Avances de palpage invalides (> 0)'))
+  if (probe.maxDepth <= 0) throw new Error(trc('Course max de palpage invalide (> 0)'))
+  if (probe.retract <= 0) throw new Error(trc('Degagement de palpage invalide (> 0)'))
+  if (probe.plate < 0) throw new Error(trc('Epaisseur de plaque invalide (>= 0)'))
 }
 
 /**
@@ -36,7 +37,7 @@ export async function probeZ(
     log('Approche fine (F{feed})…', { feed: probe.feed })
     client.clearLastProbe()
     await client.send(`G38.2 Z-${(probe.retract + 2).toFixed(3)} F${Math.round(probe.feed)}`)
-    if (!client.lastProbe?.ok) throw new Error('Palpage fin sans contact')
+    if (!client.lastProbe?.ok) throw new Error(trc('Palpage fin sans contact'))
     // P0 = repere de travail actif (pas forcement G54).
     await client.send(`G10 L20 P0 Z${probe.plate.toFixed(3)}`)
     await client.send(`G0 Z${probe.retract.toFixed(3)}`)
@@ -81,7 +82,7 @@ export async function probeCorner(
   const travel = probe.xyTravel ?? 15
   const radius = options.toolDiameter / 2
   if (!(wall >= 0) || !(travel >= 5 && travel <= 60) || !(radius > 0 && radius < 10)) {
-    throw new Error('Parametres de palpage de coin invalides (paroi >= 0, degagement 5-60 mm, outil < 20 mm)')
+    throw new Error(trc('Parametres de palpage de coin invalides (paroi >= 0, degagement 5-60 mm, outil < 20 mm)'))
   }
   // sx/sy : sens vers l'exterieur de la piece sur chaque axe.
   const sx = options.corner.endsWith('left') ? -1 : 1
@@ -102,7 +103,7 @@ export async function probeCorner(
     await sleep(150)
     client.clearLastProbe()
     await client.send(`G38.2 ${axis}${f(-s * 4)} F${Math.round(probe.feed)}`)
-    if (!client.lastProbe?.ok) throw new Error(`Palpage ${axis} sans contact`)
+    if (!client.lastProbe?.ok) throw new Error(trc('Palpage {axis} sans contact', { axis }))
     await client.send(`G10 L20 P0 ${axis}${s < 0 ? '-' : ''}${edge}`)
     // Degagement puis remontee au-dessus de la plaque.
     await client.send(`G0 ${axis}${f(s * 2)}`)
@@ -119,7 +120,7 @@ export async function probeCorner(
     await sleep(150)
     client.clearLastProbe()
     await client.send(`G38.2 Z-${f(above + 2)} F${Math.round(probe.feed)}`)
-    if (!client.lastProbe?.ok) throw new Error('Palpage Z sans contact')
+    if (!client.lastProbe?.ok) throw new Error(trc('Palpage Z sans contact'))
     await client.send(`G10 L20 P0 Z${probe.plate.toFixed(3)}`)
     await client.send(`G0 Z${f(above)}`)
 
@@ -166,11 +167,11 @@ export async function measureTool(
   const x = probe.toolsetterX
   const y = probe.toolsetterY
   const depth = probe.toolsetterDepth ?? 0
-  if (!options.homed) throw new Error('Machine non referencee ($H) : position du capteur inconnue')
+  if (!options.homed) throw new Error(trc('Machine non referencee ($H) : position du capteur inconnue'))
   if (x === undefined || y === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error('Position du capteur non definie')
+    throw new Error(trc('Position du capteur non definie'))
   }
-  if (!(depth > 0 && depth <= 200)) throw new Error('Course de palpage du capteur invalide (1-200 mm)')
+  if (!(depth > 0 && depth <= 200)) throw new Error(trc('Course de palpage du capteur invalide (1-200 mm)'))
   const f = (v: number) => v.toFixed(3)
   let contact = Number.NaN
   try {
@@ -188,7 +189,7 @@ export async function measureTool(
     client.clearLastProbe()
     await client.send(`G38.2 Z-4 F${Math.round(probe.feed)}`)
     const result = client.lastProbe
-    if (!result?.ok) throw new Error('Mesure d’outil sans contact')
+    if (!result?.ok) throw new Error(trc('Mesure d’outil sans contact'))
     contact = result.pos.z
   } finally {
     try {
@@ -240,7 +241,7 @@ async function touch(client: GrblClient, probe: ProbeSettings, axis: 'X' | 'Y', 
   const result = client.lastProbe
   await client.send(`G0 ${axis}${f3(-dir * 1)}`)
   await client.send('G90')
-  if (!result?.ok) throw new Error(`Palpage ${axis} sans contact`)
+  if (!result?.ok) throw new Error(trc('Palpage {axis} sans contact', { axis }))
   return axis === 'X' ? result.pos.x : result.pos.y
 }
 
@@ -255,7 +256,7 @@ export async function probeHoleCenter(
   log: (key: string, params?: Record<string, string | number>) => void,
 ): Promise<CenterResult> {
   checkSettings(probe)
-  if (!(options.approxDiameter > 0 && options.approxDiameter <= 100)) throw new Error('Diametre approximatif invalide (0-100 mm)')
+  if (!(options.approxDiameter > 0 && options.approxDiameter <= 100)) throw new Error(trc('Diametre approximatif invalide (0-100 mm)'))
   const travel = options.approxDiameter / 2 + 5
   try {
     await client.send('G21')
@@ -294,8 +295,8 @@ export async function probeBossCenter(
   log: (key: string, params?: Record<string, string | number>) => void,
 ): Promise<CenterResult> {
   checkSettings(probe)
-  if (!(options.approxSize > 0 && options.approxSize <= 200)) throw new Error('Taille approximative invalide (0-200 mm)')
-  if (!(options.depth > 0 && options.depth <= 20)) throw new Error('Profondeur de palpage invalide (0-20 mm)')
+  if (!(options.approxSize > 0 && options.approxSize <= 200)) throw new Error(trc('Taille approximative invalide (0-200 mm)'))
+  if (!(options.depth > 0 && options.depth <= 20)) throw new Error(trc('Profondeur de palpage invalide (0-20 mm)'))
   const out = options.approxSize / 2 + options.toolDiameter / 2 + 5
   try {
     await client.send('G21')
@@ -343,7 +344,7 @@ export async function probeEdge(
   log: (key: string, params?: Record<string, string | number>) => void,
 ): Promise<void> {
   checkSettings(probe)
-  if (!(options.travel >= 2 && options.travel <= 60)) throw new Error('Course de palpage invalide (2-60 mm)')
+  if (!(options.travel >= 2 && options.travel <= 60)) throw new Error(trc('Course de palpage invalide (2-60 mm)'))
   const axis = options.direction[0] as 'X' | 'Y'
   const dir = options.direction[1] === '+' ? 1 : -1
   const offset = (probe.xyWall ?? 0) + options.toolDiameter / 2
@@ -356,7 +357,7 @@ export async function probeEdge(
     await sleep(150)
     client.clearLastProbe()
     await client.send(`G38.2 ${axis}${f3(dir * 2)} F${Math.round(probe.feed)}`)
-    if (!client.lastProbe?.ok) throw new Error(`Palpage ${axis} sans contact`)
+    if (!client.lastProbe?.ok) throw new Error(trc('Palpage {axis} sans contact', { axis }))
     // L'outil est AVANT le bord (dans le sens du palpage) : bord = contact + dir * (rayon + paroi).
     await client.send(`G10 L20 P0 ${axis}${f3(-dir * offset)}`)
     await client.send(`G0 ${axis}${f3(-dir * 2)}`)

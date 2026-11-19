@@ -32,10 +32,9 @@ export function jobLimits(toolpath: Toolpath | null, state: LimitState): LimitCh
   const wco = state.status?.wco
   if (state.homed && wco) {
     const machineCheck = checkMachineLimits(toolpath.bounds, wco, state.status?.mpos, travelOf(state.settings, machine.area))
-    const basic = checkLimits(toolpath.bounds, travelOf(state.settings, machine.area))
+    const basic = checkLimits(toolpath.bounds, travelOf(state.settings, machine.area), { sizeOnly: true })
     // Les controles "X/Y negatif" approximatifs n'ont plus de sens ici.
-    const sizeMessages = basic.messages.filter((m) => /^(Largeur|Hauteur|Profondeur)/.test(m))
-    const messages = [...sizeMessages, ...machineCheck.messages]
+    const messages = [...basic.messages, ...machineCheck.messages]
     return { ...machineCheck, ok: messages.length === 0, messages }
   }
   return checkLimits(toolpath.bounds, machine.area)

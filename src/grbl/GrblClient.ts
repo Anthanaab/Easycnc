@@ -2,6 +2,7 @@ import { Emitter } from './emitter'
 import { parseFeedback, parseStatus } from './parser'
 import { SerialTransport } from './transport'
 import type { Feedback, GrblStatus } from './types'
+import { trc } from '../i18nCore'
 
 interface Task {
   line: string
@@ -129,7 +130,7 @@ export class GrblClient extends Emitter<GrblEvents> {
 
   async disconnect(): Promise<void> {
     this.stopPolling()
-    this.clearQueue(new Error('Deconnecte'))
+    this.clearQueue(new Error(trc('Deconnecte')))
     await this.transport.close()
     this.handleDisconnect()
   }
@@ -142,7 +143,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     this.ready = false
     this.clearReadyTimer()
     this.stopPolling()
-    this.clearQueue(new Error('Deconnecte'))
+    this.clearQueue(new Error(trc('Deconnecte')))
     this.status = null
     // Deconnexion inattendue (cable arrache) : libere le port pour pouvoir
     // se reconnecter sans recharger la page.
@@ -186,12 +187,12 @@ export class GrblClient extends Emitter<GrblEvents> {
     if (!clean) return Promise.resolve()
     return new Promise<void>((resolve, reject) => {
       if (!this._connected) {
-        reject(new Error('Non connecte'))
+        reject(new Error(trc('Non connecte')))
         return
       }
       const bytes = clean.length + 1
       if (bytes > this.rxBudget || grblLineLength(clean) > MAX_LINE_CHARS) {
-        reject(new Error(`Ligne trop longue pour GRBL (${grblLineLength(clean)} caracteres) : ${clean.slice(0, 40)}…`))
+        reject(new Error(trc('Ligne trop longue pour GRBL ({n} caracteres) : {line}…', { n: grblLineLength(clean), line: clean.slice(0, 40) })))
         return
       }
       this.pending.push({ line: clean, bytes, resolve, reject })
@@ -321,10 +322,10 @@ export class GrblClient extends Emitter<GrblEvents> {
       if (this.ready) {
         this.homed = false
         this.retainHomed = false
-        this.clearQueue(new Error('GRBL a redemarre'))
+        this.clearQueue(new Error(trc('GRBL a redemarre')))
       } else {
         if (!this.retainHomed) this.homed = false
-        this.rejectInFlight(new Error('GRBL a redemarre'))
+        this.rejectInFlight(new Error(trc('GRBL a redemarre')))
       }
       this.markReady()
       this.emit('welcome', line)
@@ -371,7 +372,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     this.writeRealtime(0x18) // Ctrl-X
     this.homing = false
     this.waitForBoot(2000)
-    this.clearQueue(new Error('Reset'))
+    this.clearQueue(new Error(trc('Reset')))
   }
 
   jogCancel(): void {
@@ -447,7 +448,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     } finally {
       off()
     }
-    if (gc === null) throw new Error('Etat modal ($G) non recu')
+    if (gc === null) throw new Error(trc('Etat modal ($G) non recu'))
     return gc
   }
 
@@ -462,11 +463,11 @@ export class GrblClient extends Emitter<GrblEvents> {
       })
       const offDisconnect = this.on('disconnected', () => {
         cleanup()
-        reject(new Error('Deconnecte'))
+        reject(new Error(trc('Deconnecte')))
       })
       const timer = window.setTimeout(() => {
         cleanup()
-        reject(new Error('Delai depasse'))
+        reject(new Error(trc('Delai depasse')))
       }, timeoutMs)
       const cleanup = () => {
         off()
@@ -483,7 +484,7 @@ export class GrblClient extends Emitter<GrblEvents> {
   /** Jog GRBL 1.1: $J=G91 G21 X.. Y.. Z.. F.. */
   async jog(axis: 'X' | 'Y' | 'Z', distance: number, feed: number): Promise<void> {
     if (!Number.isFinite(distance) || !Number.isFinite(feed) || feed <= 0) {
-      throw new Error('Jog : distance ou avance invalide')
+      throw new Error(trc('Jog : distance ou avance invalide'))
     }
     const line = `$J=G91 G21 ${axis}${distance.toFixed(3)} F${Math.round(feed)}`
     await this.send(line)
