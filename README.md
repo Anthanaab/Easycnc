@@ -101,7 +101,8 @@ npm run preview
 ```bash
 npm run typecheck
 npm test                # tests unitaires (Vitest) : protocole GRBL, streamer, FAO, G-code
-npm run test:e2e        # nécessite : npm run test:install (une fois)
+npm run test:coverage   # idem + couverture (seuils minimaux vérifiés en CI)
+npm run test:e2e        # e2e + audit d'accessibilité (axe) ; nécessite : npm run test:install
 ```
 
 `npm run build` exécute aussi les tests unitaires. La CI GitHub Actions

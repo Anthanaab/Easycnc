@@ -1,4 +1,4 @@
-import { loc } from '../i18n'
+import { coreLanguage } from '../i18nCore'
 
 // Codes GRBL 1.1 (doc officielle grbl/doc/csv). [FR, EN]
 const ERRORS: Record<number, [string, string]> = {
@@ -59,5 +59,5 @@ export function describeGrblCode(line: string): string {
   if (!match) return line
   const table = match[1] === 'error' ? ERRORS : ALARMS
   const entry = table[Number(match[2])]
-  return entry ? `${line} — ${loc(entry[0], entry[1])}` : line
+  return entry ? `${line} — ${coreLanguage() === 'en' ? entry[1] : entry[0]}` : line
 }

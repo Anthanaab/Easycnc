@@ -62,7 +62,8 @@ export function distributeShapes(shapes: Shape[], ids: string[], axis: Distribut
   const first = items[0].bounds
   const last = items[items.length - 1].bounds
   const start = axis === 'horizontal' ? first.min.x : first.min.y
-  const end = axis === 'horizontal' ? last.min.x : last.min.y
+  // Les formes extremes restent en place : espace = du bord de la premiere au bord oppose de la derniere.
+  const end = axis === 'horizontal' ? last.max.x : last.max.y
   const totalSize = items.reduce(
     (acc, item) => acc + (axis === 'horizontal' ? item.bounds.max.x - item.bounds.min.x : item.bounds.max.y - item.bounds.min.y),
     0,
