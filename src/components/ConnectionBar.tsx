@@ -49,7 +49,7 @@ export function ConnectionBar() {
       </div>
 
       <div className="topbar-group">
-        <select value={baud} onChange={(e) => setBaud(Number(e.target.value))} disabled={connected}>
+        <select value={baud} aria-label={t('Débit (bauds)')} onChange={(e) => setBaud(Number(e.target.value))} disabled={connected}>
           {BAUD_RATES.map((rate) => (
             <option key={rate} value={rate}>
               {rate} {t('bauds')}

@@ -107,7 +107,7 @@ export function ShapeInspector() {
         <h3 className="sub">{t('Texte')}</h3>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t('Votre texte')} />
         <div className="text-row">
-          <select value={font} onChange={(e) => setFont(e.target.value)}>
+          <select value={font} aria-label={t('Police')} onChange={(e) => setFont(e.target.value)}>
             {FONTS.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.label}

@@ -81,7 +81,14 @@ export function BitIcon({ type, geom, angle, size = 44, title }: Props) {
   }
 
   return (
-    <svg viewBox="0 0 40 48" width={size} height={(size * 48) / 40} className="bit-icon" role="img">
+    <svg
+      viewBox="0 0 40 48"
+      width={size}
+      height={(size * 48) / 40}
+      className="bit-icon"
+      // Avec titre : image nommee ; sans titre : decorative (le texte voisin decrit la fraise).
+      {...(title ? { role: 'img' } : { 'aria-hidden': true })}
+    >
       {title && <title>{title}</title>}
       <line x1={2} y1={46} x2={38} y2={46} stroke="currentColor" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
       {shank}

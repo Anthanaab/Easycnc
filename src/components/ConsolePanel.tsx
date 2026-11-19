@@ -94,6 +94,9 @@ export function ConsolePanel() {
       <div
         className="console-log"
         ref={listRef}
+        role="log"
+        aria-label={t('Journal de la console')}
+        tabIndex={0}
         onScroll={(e) => {
           const el = e.currentTarget
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24

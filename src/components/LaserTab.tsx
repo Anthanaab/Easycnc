@@ -418,7 +418,7 @@ export function LaserTab() {
             )}
           </div>
           <h3 className="sub">{t('Profils laser')}</h3>
-          <select value={presetId} onChange={(e) => applyPreset(e.target.value)} style={{ width: '100%' }}>
+          <select value={presetId} aria-label={t('Préréglage laser')} onChange={(e) => applyPreset(e.target.value)} style={{ width: '100%' }}>
             <option value="">{t('Choisir un profil…')}</option>
             {laserPresets.map((p) => (
               <option key={p.id} value={p.id}>
