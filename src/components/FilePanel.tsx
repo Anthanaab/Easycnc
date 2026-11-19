@@ -246,6 +246,8 @@ export function FilePanel() {
         {t('Essai à blanc (Z rehaussé, broche coupée)')}
       </label>
 
+      <QueuePanel busy={running || paused} hasProgram={Boolean(toolpath)} />
+
       {!running && !paused && toolpath && (
         <label className="field">
           <span>
@@ -307,4 +309,51 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
+}
+
+/** File de programmes : preparer l'enchainement, charger le suivant a la main. */
+function QueuePanel({ busy, hasProgram }: { busy: boolean; hasProgram: boolean }) {
+  const queue = useStore((s) => s.queue)
+  const enqueueCurrent = useStore((s) => s.enqueueCurrent)
+  const removeFromQueue = useStore((s) => s.removeFromQueue)
+  const moveInQueue = useStore((s) => s.moveInQueue)
+  const loadNextInQueue = useStore((s) => s.loadNextInQueue)
+  const t = useT()
+
+  return (
+    <div className="queue">
+      <div className="queue-head">
+        <span className="muted">
+          {t('File')} ({queue.length})
+        </span>
+        <button className="btn tiny" disabled={!hasProgram} onClick={enqueueCurrent} title={t('Ajouter le programme chargé à la file')}>
+          + {t('File')}
+        </button>
+        {queue.length > 0 && (
+          <button className="btn tiny primary" disabled={busy} onClick={loadNextInQueue} title={t('Charge le suivant (sans le démarrer)')}>
+            {t('Charger le suivant')}
+          </button>
+        )}
+      </div>
+      {queue.map((item, index) => (
+        <div key={item.id} className="queue-item">
+          <span>
+            {index + 1}. {item.name}
+            {item.jobType === 'laser' && <span className="muted"> · laser</span>}
+          </span>
+          <span className="queue-actions">
+            <button className="btn tiny" disabled={index === 0} onClick={() => moveInQueue(item.id, -1)} aria-label={t('Monter')}>
+              ▲
+            </button>
+            <button className="btn tiny" disabled={index === queue.length - 1} onClick={() => moveInQueue(item.id, 1)} aria-label={t('Descendre')}>
+              ▼
+            </button>
+            <button className="btn tiny danger" onClick={() => removeFromQueue(item.id)} aria-label={t('Retirer')}>
+              ✕
+            </button>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
 }

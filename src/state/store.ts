@@ -89,6 +89,13 @@ export interface AppState {
   toolpath: Toolpath | null
   /** Analyse du G-code en cours (gros fichiers, dans le worker). */
   parsing: boolean
+  /** File de programmes : jamais demarres automatiquement (outil / Z0 a verifier). */
+  queue: Array<{ id: number; name: string; text: string; jobType: 'mill' | 'laser' }>
+  enqueueCurrent: () => void
+  removeFromQueue: (id: number) => void
+  moveInQueue: (id: number, delta: -1 | 1) => void
+  /** Charge le premier programme de la file (sans le demarrer). */
+  loadNextInQueue: () => void
   stream: StreamInfo
 
   connect: (baudRate?: number) => Promise<void>
@@ -260,6 +267,7 @@ export const useStore = create<AppState>((set, get) => ({
   jobType: null,
   toolpath: null,
   parsing: false,
+  queue: [],
   stream: { state: 'idle', sent: 0, total: 0 },
 
   connect: async (baudRate) => {
@@ -621,6 +629,32 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  enqueueCurrent: () => {
+    const { fileName, rawGcode, jobType, queue } = get()
+    if (!rawGcode || !fileName) return
+    set({ queue: [...queue, { id: Date.now(), name: fileName, text: rawGcode, jobType: jobType ?? 'mill' }] })
+    pushLog('info', tr('Ajouté à la file : {name}', { name: fileName }))
+  },
+
+  removeFromQueue: (id) => set({ queue: get().queue.filter((item) => item.id !== id) }),
+
+  moveInQueue: (id, delta) => {
+    const queue = [...get().queue]
+    const index = queue.findIndex((item) => item.id === id)
+    const target = index + delta
+    if (index < 0 || target < 0 || target >= queue.length) return
+    ;[queue[index], queue[target]] = [queue[target], queue[index]]
+    set({ queue })
+  },
+
+  loadNextInQueue: () => {
+    if (streamer.isRunning) return
+    const [next, ...rest] = get().queue
+    if (!next) return
+    set({ queue: rest })
+    get().loadFile(next.name, next.text, next.jobType)
+  },
+
   startStream: async (fromLine) => {
     // Pendant le clic (geste utilisateur) : autorisation des notifications de fin.
     requestJobNotifications()
@@ -758,7 +792,9 @@ export const streamer = new GcodeStreamer(client, {
     useStore.setState((state) => ({ stream: { ...state.stream, done: state.stream.total } }))
     pushLog('info', tr('Programme termine'))
     recordJobEnd('done', streamer.total)
-    notifyJob(tr('Programme terminé'), useStore.getState().fileName ?? '')
+    const next = useStore.getState().queue[0]
+    notifyJob(tr('Programme terminé'), next ? tr('Suivant dans la file : {name}', { name: next.name }) : (useStore.getState().fileName ?? ''))
+    if (next) pushLog('info', tr('Suivant dans la file : {name} — vérifiez outil et Z0, puis chargez-le.', { name: next.name }))
   },
   onError: (error) => {
     const msg = describeGrblCode(error.message)

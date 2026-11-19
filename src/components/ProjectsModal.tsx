@@ -9,8 +9,11 @@ import {
   saveProject,
 } from '../state/project'
 import { useT } from '../i18n'
+import { setAccessToken } from '../state/accessToken'
 import {
   deleteServerProject,
+  exportServerProjects,
+  importServerProjects,
   listServerProjects,
   loadServerProject,
   saveServerProject,
@@ -27,11 +30,19 @@ export function ProjectsModal() {
   const fileRef = useRef<HTMLInputElement>(null)
   // null = serveur sans gestion des projets (local, hebergement statique).
   const [serverProjects, setServerProjects] = useState<ServerProjectInfo[] | null>(null)
+  // Serveur protege par un code d'acces non encore saisi.
+  const [locked, setLocked] = useState(false)
+  const [code, setCode] = useState('')
+  const backupRef = useRef<HTMLInputElement>(null)
   const [alsoServer, setAlsoServer] = useState(true)
   const t = useT()
 
   const refresh = () => setProjects(listProjects())
-  const refreshServer = () => void listServerProjects().then(setServerProjects)
+  const refreshServer = () =>
+    void listServerProjects().then((list) => {
+      setLocked(list === 'locked')
+      setServerProjects(list === 'locked' ? null : list)
+    })
   useEffect(refreshServer, [])
 
   const save = async () => {
@@ -142,9 +153,61 @@ export function ProjectsModal() {
       </div>
       {message && <p className="notes">{message}</p>}
 
+      {locked && (
+        <div className="projects-save">
+          <input type="password" autoComplete="off" placeholder={t("Code d'accès du serveur")} value={code} onChange={(e) => setCode(e.target.value)} />
+          <button
+            className="btn"
+            onClick={() => {
+              setAccessToken(code)
+              refreshServer()
+            }}
+          >
+            {t('Déverrouiller')}
+          </button>
+        </div>
+      )}
+
       {serverProjects && (
         <>
-          <h3 className="sub">{t('Sur le serveur')} ({serverProjects.length})</h3>
+          <div className="panel-head">
+            <h3 className="sub">{t('Sur le serveur')} ({serverProjects.length})</h3>
+            <div className="console-tools">
+              <button
+                className="btn tiny"
+                disabled={!serverProjects.length}
+                onClick={() =>
+                  void exportServerProjects().then(
+                    (n) => setMessage(`${t('Sauvegarde téléchargée')} : ${n} ${t('projet(s)')}`),
+                    (error: Error) => setMessage(error.message),
+                  )
+                }
+              >
+                {t('Sauvegarder (serveur)')}
+              </button>
+              <button className="btn tiny" onClick={() => backupRef.current?.click()}>
+                {t('Restaurer')}
+              </button>
+              <input
+                ref={backupRef}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!file) return
+                  try {
+                    const n = await importServerProjects(await file.text())
+                    setMessage(`${t('Restauré sur le serveur')} : ${n} ${t('projet(s)')}`)
+                  } catch (error) {
+                    setMessage(error instanceof Error ? error.message : String(error))
+                  }
+                  refreshServer()
+                }}
+              />
+            </div>
+          </div>
           <div className="project-list">
             {serverProjects.map((project) => (
               <div key={project.name} className="project-item">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useT } from '../i18n'
+import { getAccessToken, setAccessToken } from '../state/accessToken'
 import { checkForAppUpdate, useAppUpdate } from '../state/appUpdate'
 import { useStore } from '../state/store'
 
@@ -16,15 +17,7 @@ interface ServerStatus {
   releases?: Array<{ name: string; sha: string; current: boolean }>
 }
 
-const TOKEN_KEY = 'easycnc.updateToken'
 
-function readToken(): string {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
 
 type Availability = 'loading' | 'ok' | 'unavailable'
 
@@ -37,7 +30,7 @@ export function UpdatePanel() {
   const [status, setStatus] = useState<ServerStatus | null>(null)
   const [error, setError] = useState('')
   const [checking, setChecking] = useState(false)
-  const [token, setToken] = useState(readToken)
+  const [token, setToken] = useState(getAccessToken)
   const jobActive = useStore((s) => s.stream.state !== 'idle')
   const appReady = useAppUpdate((s) => s.ready)
   const applyApp = useAppUpdate((s) => s.apply)
@@ -83,12 +76,8 @@ export function UpdatePanel() {
 
   const rememberToken = (value: string) => {
     setToken(value)
-    try {
-      // Session seulement : le code n'est pas garde apres fermeture du navigateur.
-      sessionStorage.setItem(TOKEN_KEY, value)
-    } catch {
-      /* ignore */
-    }
+    // Session seulement : le code n'est pas garde apres fermeture du navigateur.
+    setAccessToken(value)
   }
 
   const switchTo = async (name: string) => {

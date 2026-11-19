@@ -68,7 +68,10 @@ update          # MAJ système (apt) + EasyCNC + configuration (nginx, service)
 La fenêtre **Projets** propose d'enregistrer aussi les projets sur le serveur
 (`/var/lib/easycnc/projects`, un fichier JSON par projet) : ils sont retrouvés
 depuis n'importe quel poste. Une suppression les déplace dans `projects/trash/`
-(récupérables). Sauvegarde : copier ce dossier.
+(récupérables). Sauvegarde : bouton **« Sauvegarder (serveur) »** dans la fenêtre
+Projets (un fichier JSON avec tous les projets, restaurable avec **« Restaurer »**),
+ou copie du dossier. Si un code d'accès est configuré (`UPDATE_TOKEN`), il protège
+aussi les projets (lecture comprise).
 
 ## Accès
 

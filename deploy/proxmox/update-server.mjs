@@ -144,7 +144,8 @@ function projectFile(name) {
 }
 
 function validName(name) {
-  return typeof name === 'string' && name.trim().length > 0 && name.length <= 120 && !/[\u0000-\u001f]/.test(name)
+  // Pas de nom commencant par « _ » : reserve aux routes (_export).
+  return typeof name === 'string' && name.trim().length > 0 && name.length <= 120 && !name.startsWith('_') && !/[\u0000-\u001f]/.test(name)
 }
 
 function listProjects() {
@@ -185,9 +186,36 @@ function readBody(req, limit) {
 }
 
 async function handleProjects(req, res, url) {
+  // Code d'acces (s'il est defini) : exige aussi pour les projets, lecture comprise.
+  if (!authorized(req)) {
+    send(res, 401, { error: "Code d'acces requis" })
+    return
+  }
   const rest = url.pathname.slice('/api/projects'.length)
   if (req.method === 'GET' && (rest === '' || rest === '/')) {
     send(res, 200, listProjects())
+    return
+  }
+  // Sauvegarde : tous les projets en un seul fichier JSON.
+  if (req.method === 'GET' && rest === '/_export') {
+    const projects = []
+    try {
+      for (const file of readdirSync(PROJECTS_DIR).filter((f) => f.endsWith('.json'))) {
+        try {
+          projects.push(JSON.parse(readFileSync(`${PROJECTS_DIR}/${file}`, 'utf8')))
+        } catch {
+          /* fichier illisible : ignore */
+        }
+      }
+    } catch {
+      /* dossier absent */
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="easycnc-projets-${new Date().toISOString().slice(0, 10)}.json"`,
+    })
+    res.end(JSON.stringify({ format: 'easycnc-projects', version: 1, exportedAt: Date.now(), projects }))
     return
   }
   const name = decodeURIComponent(rest.replace(/^\//, ''))

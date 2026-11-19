@@ -1607,3 +1607,26 @@ select.job-badge {
     grid-template-columns: 1fr;
   }
 }
+
+.queue {
+  margin: 6px 0 8px;
+  font-size: 12px;
+}
+
+.queue-head,
+.queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.queue-item {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-actions {
+  display: flex;
+  gap: 4px;
+}
