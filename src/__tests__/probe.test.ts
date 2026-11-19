@@ -113,3 +113,98 @@ describe("mesure d'outil sur capteur fixe", () => {
     expect(toolLengthOffset(-31.5, -33.0)).toBeCloseTo(-1.5)
   })
 })
+
+import { probeBossCenter, probeEdge, probeHoleCenter } from '../grbl/probe'
+
+/**
+ * Machine geometrique : suit la position (G90/G91, G53), et pour G38.2 calcule
+ * le contact reel de l'outil (rayon r) avec la forme `touches(axis, dir, pos)`.
+ */
+function geoClient(contactAt: (axis: 'X' | 'Y', dir: number, pos: { x: number; y: number; z: number }) => number | null, start = { x: -100, y: -50, z: -10 }) {
+  const pos = { ...start }
+  let relative = false
+  const sent: string[] = []
+  const client = {
+    lastProbe: null as null | { pos: { x: number; y: number; z: number }; ok: boolean },
+    clearLastProbe() {
+      client.lastProbe = null
+    },
+    waitForStatus: async () => ({ state: 'Idle', mpos: { ...pos }, timestamp: Date.now(), raw: '' }),
+    async send(line: string) {
+      sent.push(line)
+      if (/^G91/.test(line)) relative = true
+      if (/^G90/.test(line)) relative = false
+      const machine = /G53/.test(line)
+      const words = Object.fromEntries([...line.matchAll(/([XYZ])(-?[\d.]+)/g)].map((m) => [m[1], Number(m[2])])) as Record<'X' | 'Y' | 'Z', number>
+      if (/^G38\.2/.test(line)) {
+        const axis = 'X' in words ? 'X' : 'Y'
+        const key = axis === 'X' ? 'x' : 'y'
+        const dir = Math.sign(words[axis])
+        const limit = pos[key] + words[axis]
+        const hit = contactAt(axis, dir, pos)
+        if (hit === null || (dir > 0 ? hit > limit : hit < limit)) throw new Error('ALARM:5')
+        pos[key] = hit
+        client.lastProbe = { pos: { ...pos }, ok: true }
+        return
+      }
+      if (!/^G[01]|^G53/.test(line)) return
+      for (const axis of ['X', 'Y', 'Z'] as const) {
+        if (!(axis in words)) continue
+        const key = axis.toLowerCase() as 'x' | 'y' | 'z'
+        pos[key] = relative && !machine ? pos[key] + words[axis] : words[axis]
+      }
+    },
+  }
+  return { client: client as unknown as GrblClient, sent, pos }
+}
+
+describe('autres palpages', () => {
+  const tool = 3
+  const r = tool / 2
+
+  it('centre de trou : trouve le vrai centre et le diametre, meme demarre decentre', async () => {
+    const c = { x: -100, y: -50 }
+    const R = 10
+    // Contact sur la paroi interieure : le centre de l'outil est a R - r du centre du trou.
+    const contact = (axis: 'X' | 'Y', dir: number, p: { x: number; y: number }) => {
+      const other = axis === 'X' ? p.y - c.y : p.x - c.x
+      const half = Math.sqrt(Math.max(0, (R - r) ** 2 - other ** 2))
+      return (axis === 'X' ? c.x : c.y) + dir * half
+    }
+    const { client, sent } = geoClient(contact, { x: c.x + 3, y: c.y - 2, z: -10 })
+    const result = await probeHoleCenter(client, probe, { approxDiameter: 20, toolDiameter: tool }, noop)
+    expect(result.x).toBeCloseTo(c.x, 3)
+    expect(result.y).toBeCloseTo(c.y, 3)
+    expect(result.sizeX).toBeCloseTo(2 * R, 3)
+    expect(sent).toContain('G10 L20 P0 X0 Y0')
+  })
+
+  it('centre de tenon : sort, descend, palpe vers le centre, remonte avant de revenir', async () => {
+    const c = { x: -120, y: -60 }
+    const half = { X: 15, Y: 10 }
+    const contact = (axis: 'X' | 'Y', dir: number) => (axis === 'X' ? c.x : c.y) - dir * (half[axis] + r)
+    const { client, sent } = geoClient((axis, dir) => contact(axis, dir), { x: c.x + 2, y: c.y + 1, z: -5 })
+    const result = await probeBossCenter(client, probe, { approxSize: 30, depth: 4, toolDiameter: tool }, noop)
+    expect(result.x).toBeCloseTo(c.x, 3)
+    expect(result.y).toBeCloseTo(c.y, 3)
+    expect(result.sizeX).toBeCloseTo(30, 3)
+    expect(result.sizeY).toBeCloseTo(20, 3)
+    // Jamais de deplacement absolu (G53) sans etre remonte juste avant.
+    sent.forEach((line, i) => {
+      if (line.startsWith('G53 G0')) expect(sent.slice(Math.max(0, i - 3), i).some((l) => l === 'G0 Z4.000' || l.startsWith('G0 X') || l.startsWith('G0 Y'))).toBe(true)
+    })
+  })
+
+  it('bord X+ : origine X sur le bord (rayon + paroi)', async () => {
+    const edge = -80
+    const { client, sent } = geoClient((axis, dir) => (axis === 'X' && dir > 0 ? edge - r : null), { x: -90, y: -50, z: -12 })
+    await probeEdge(client, { ...probe, xyWall: 0 }, { direction: 'X+', toolDiameter: tool, travel: 20 }, noop)
+    expect(sent).toContain('G10 L20 P0 X-1.500')
+  })
+
+  it('sans contact : erreur et retour en G90', async () => {
+    const { client, sent } = geoClient(() => null)
+    await expect(probeEdge(client, probe, { direction: 'Y-', toolDiameter: tool, travel: 10 }, noop)).rejects.toThrow()
+    expect(sent[sent.length - 1]).toBe('G90')
+  })
+})

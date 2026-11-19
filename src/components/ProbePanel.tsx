@@ -19,6 +19,10 @@ export function ProbePanel() {
   const setSetting = useStore((s) => s.setSetting)
   const setProbe = useStore((s) => s.setProbe)
   const runCornerProbe = useStore((s) => s.runCornerProbe)
+  const runFeatureProbe = useStore((s) => s.runFeatureProbe)
+  const [feature, setFeature] = useState<'hole' | 'boss' | 'X-' | 'X+' | 'Y-' | 'Y+'>('hole')
+  const [featureSize, setFeatureSize] = useState(20)
+  const [featureDepth, setFeatureDepth] = useState(3)
   const measureReferenceTool = useStore((s) => s.measureReferenceTool)
   const measureNewTool = useStore((s) => s.measureNewTool)
   const clearToolOffset = useStore((s) => s.clearToolOffset)
@@ -114,6 +118,51 @@ export function ProbePanel() {
       </div>
       <button className="btn" style={{ width: '100%' }} disabled={!connected || busy} onClick={() => void startCorner()}>
         {busy ? t('Palpage…') : t('Palper le coin (X, Y, Z)')}
+      </button>
+
+      <h3 className="sub">{t('Centre / bord')}</h3>
+      <div className="params-grid">
+        <label className="num-field">
+          <span>{t('Type')}</span>
+          <select value={feature} onChange={(e) => setFeature(e.target.value as typeof feature)}>
+            <option value="hole">{t('Centre de trou')}</option>
+            <option value="boss">{t('Centre de tenon / pièce')}</option>
+            <option value="X+">{t('Bord X (palper vers X+)')}</option>
+            <option value="X-">{t('Bord X (palper vers X−)')}</option>
+            <option value="Y+">{t('Bord Y (palper vers Y+)')}</option>
+            <option value="Y-">{t('Bord Y (palper vers Y−)')}</option>
+          </select>
+        </label>
+        {(feature === 'hole' || feature === 'boss') && (
+          <label className="num-field">
+            <span>{feature === 'hole' ? t('Diamètre approx. (mm)') : t('Taille approx. (mm)')}</span>
+            <input type="number" min={1} step={1} value={featureSize} onChange={(e) => setFeatureSize(Number(e.target.value))} />
+          </label>
+        )}
+        {feature === 'boss' && (
+          <label className="num-field">
+            <span>{t('Profondeur de palpage (mm)')}</span>
+            <input type="number" min={0.5} max={20} step={0.5} value={featureDepth} onChange={(e) => setFeatureDepth(Number(e.target.value))} />
+          </label>
+        )}
+      </div>
+      <button
+        className="btn"
+        style={{ width: '100%' }}
+        disabled={!connected || busy}
+        onClick={() => {
+          const how =
+            feature === 'hole'
+              ? t('Fraise/palpeur DANS le trou, à peu près au centre, sous le bord.')
+              : feature === 'boss'
+                ? t('Fraise AU-DESSUS du tenon, à peu près au centre ; la zone autour doit être dégagée.')
+                : t('Fraise à côté du bord, à hauteur de palpage, à moins de 15 mm.')
+          if (window.confirm(`${how}\n${t('Pince du palpeur sur la fraise. Continuer ?')}`)) {
+            void withBusy(() => runFeatureProbe(feature, { size: featureSize, depth: featureDepth, travel: 15 }))
+          }
+        }}
+      >
+        {busy ? t('Palpage…') : t('Palper')}
       </button>
 
       <h3 className="sub">{t("Mesure d'outil (capteur fixe)")}</h3>

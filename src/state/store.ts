@@ -5,7 +5,17 @@ import { MATERIALS, findMaterial } from '../data/materials'
 import { autoParams, type CutParams } from '../data/params'
 import type { Bit, MachineProfile, Material, ProbeSettings } from '../data/types'
 import { GrblClient, MAX_LINE_CHARS, grblLineLength } from '../grbl/GrblClient'
-import { measureTool, probeCorner, probeZ, toolLengthOffset, type Corner } from '../grbl/probe'
+import {
+  measureTool,
+  probeBossCenter,
+  probeCorner,
+  probeEdge,
+  probeHoleCenter,
+  probeZ,
+  toolLengthOffset,
+  type Corner,
+  type EdgeDirection,
+} from '../grbl/probe'
 import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZWithMap } from '../gcode/dryrun'
@@ -107,6 +117,11 @@ export interface AppState {
   importSettings: (json: string) => void
   runProbe: () => Promise<void>
   runCornerProbe: (corner: Corner) => Promise<void>
+  /** Centre de trou / de tenon, ou bord simple. */
+  runFeatureProbe: (
+    kind: 'hole' | 'boss' | EdgeDirection,
+    options: { size: number; depth: number; travel: number },
+  ) => Promise<void>
   measureReferenceTool: () => Promise<void>
   measureNewTool: () => Promise<void>
   clearToolOffset: () => void
@@ -520,6 +535,24 @@ export const useStore = create<AppState>((set, get) => ({
       .send('G49')
       .then(() => client.send('$#'))
       .catch((error) => pushLog('error', describeGrblCode(message(error))))
+  },
+
+  runFeatureProbe: async (kind, options) => {
+    if (!guard()) return
+    if (get().status?.state !== 'Idle') {
+      pushLog('error', tr('Machine non prête (attendez Idle)'))
+      return
+    }
+    const bit = get().bits.find((b) => b.id === get().bitId) ?? get().bits[0]
+    const log = (key: string, params?: Record<string, string | number>) => pushLog('info', tr(key, params))
+    try {
+      if (kind === 'hole') await probeHoleCenter(client, get().probe, { approxDiameter: options.size, toolDiameter: bit.diameter }, log)
+      else if (kind === 'boss') await probeBossCenter(client, get().probe, { approxSize: options.size, depth: options.depth, toolDiameter: bit.diameter }, log)
+      else await probeEdge(client, get().probe, { direction: kind, toolDiameter: bit.diameter, travel: options.travel }, log)
+      void client.send('$#').catch(() => undefined)
+    } catch (error) {
+      pushLog('error', tr('Palpage echoue: {msg} (verifiez le cablage et $6, puis $X)', { msg: describeGrblCode(message(error)) }))
+    }
   },
 
   runCornerProbe: async (corner) => {

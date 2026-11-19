@@ -206,3 +206,162 @@ export async function measureTool(
 export function toolLengthOffset(referenceZ: number, newZ: number): number {
   return newZ - referenceZ
 }
+
+// ----- Centre de trou / de tenon, bord simple -----
+
+export type EdgeDirection = 'X-' | 'X+' | 'Y-' | 'Y+'
+
+export interface CenterResult {
+  x: number
+  y: number
+  /** Dimension mesuree (diametre du trou, ou largeur du tenon en X / Y). */
+  sizeX: number
+  sizeY: number
+}
+
+const f3 = (v: number) => v.toFixed(3)
+
+/** Position machine courante (rapport d'etat frais). */
+async function currentMachinePos(client: GrblClient): Promise<{ x: number; y: number; z: number }> {
+  const since = Date.now()
+  const status = await client.waitForStatus((s) => s.timestamp >= since && s.mpos !== undefined, 2000)
+  return status.mpos!
+}
+
+/** Palpe vers `dir` (rapide puis lent) sur un axe ; renvoie la coordonnee MACHINE du contact. */
+async function touch(client: GrblClient, probe: ProbeSettings, axis: 'X' | 'Y', dir: number, travel: number): Promise<number> {
+  await client.send('G91')
+  client.clearLastProbe()
+  await client.send(`G38.2 ${axis}${f3(dir * travel)} F${Math.round(probe.fast)}`)
+  await client.send(`G0 ${axis}${f3(-dir * 1)}`)
+  await sleep(150)
+  client.clearLastProbe()
+  await client.send(`G38.2 ${axis}${f3(dir * 2)} F${Math.round(probe.feed)}`)
+  const result = client.lastProbe
+  await client.send(`G0 ${axis}${f3(-dir * 1)}`)
+  await client.send('G90')
+  if (!result?.ok) throw new Error(`Palpage ${axis} sans contact`)
+  return axis === 'X' ? result.pos.x : result.pos.y
+}
+
+/**
+ * Centre d'un trou : outil dans le trou, sous le bord. X des deux cotes, puis Y,
+ * puis X de nouveau (plus precis une fois centre en Y). Origine X0 Y0 au centre.
+ */
+export async function probeHoleCenter(
+  client: GrblClient,
+  probe: ProbeSettings,
+  options: { approxDiameter: number; toolDiameter: number },
+  log: (key: string, params?: Record<string, string | number>) => void,
+): Promise<CenterResult> {
+  checkSettings(probe)
+  if (!(options.approxDiameter > 0 && options.approxDiameter <= 100)) throw new Error('Diametre approximatif invalide (0-100 mm)')
+  const travel = options.approxDiameter / 2 + 5
+  try {
+    await client.send('G21')
+    const start = await currentMachinePos(client)
+    const across = async (axis: 'X' | 'Y', from: number) => {
+      const a = await touch(client, probe, axis, -1, travel)
+      await client.send(`G53 G0 ${axis}${f3(from)}`)
+      const b = await touch(client, probe, axis, 1, travel)
+      const center = (a + b) / 2
+      await client.send(`G53 G0 ${axis}${f3(center)}`)
+      return { center, size: b - a + options.toolDiameter }
+    }
+    log('Centre de trou : palpage X…')
+    const x1 = await across('X', start.x)
+    log('Centre de trou : palpage Y…')
+    const y = await across('Y', start.y)
+    log('Centre de trou : nouveau palpage X…')
+    const x = await across('X', x1.center)
+    await client.send('G10 L20 P0 X0 Y0')
+    log('Centre de trou : X0 Y0 définis, diamètre mesuré {d} mm', { d: ((x.size + y.size) / 2).toFixed(3) })
+    return { x: x.center, y: y.center, sizeX: x.size, sizeY: y.size }
+  } finally {
+    await client.send('G90').catch(() => undefined)
+  }
+}
+
+/**
+ * Centre d'un tenon / d'une piece : outil AU-DESSUS, a peu pres centre. Pour
+ * chaque cote : sortie au-dela du tenon, descente de `depth`, palpage vers le
+ * centre, remontee, retour. Origine X0 Y0 au centre.
+ */
+export async function probeBossCenter(
+  client: GrblClient,
+  probe: ProbeSettings,
+  options: { approxSize: number; depth: number; toolDiameter: number },
+  log: (key: string, params?: Record<string, string | number>) => void,
+): Promise<CenterResult> {
+  checkSettings(probe)
+  if (!(options.approxSize > 0 && options.approxSize <= 200)) throw new Error('Taille approximative invalide (0-200 mm)')
+  if (!(options.depth > 0 && options.depth <= 20)) throw new Error('Profondeur de palpage invalide (0-20 mm)')
+  const out = options.approxSize / 2 + options.toolDiameter / 2 + 5
+  try {
+    await client.send('G21')
+    const start = await currentMachinePos(client)
+    const side = async (axis: 'X' | 'Y', dir: number, from: number) => {
+      // Sortie a hauteur de depart (au-dessus du tenon), descente, palpage vers le centre.
+      await client.send('G91')
+      await client.send(`G0 ${axis}${f3(dir * out)}`)
+      await client.send(`G0 Z${f3(-options.depth)}`)
+      await client.send('G90')
+      const contact = await touch(client, probe, axis, -dir, out)
+      await client.send('G91')
+      await client.send(`G0 Z${f3(options.depth)}`)
+      await client.send('G90')
+      await client.send(`G53 G0 ${axis}${f3(from)}`)
+      return contact
+    }
+    const axisCenter = async (axis: 'X' | 'Y', from: number) => {
+      const a = await side(axis, -1, from)
+      const b = await side(axis, 1, from)
+      const center = (a + b) / 2
+      await client.send(`G53 G0 ${axis}${f3(center)}`)
+      return { center, size: b - a - options.toolDiameter }
+    }
+    log('Centre de tenon : palpage X…')
+    const x = await axisCenter('X', start.x)
+    log('Centre de tenon : palpage Y…')
+    const y = await axisCenter('Y', start.y)
+    await client.send('G10 L20 P0 X0 Y0')
+    log('Centre de tenon : X0 Y0 définis ({w} × {h} mm)', { w: x.size.toFixed(3), h: y.size.toFixed(3) })
+    return { x: x.center, y: y.center, sizeX: x.size, sizeY: y.size }
+  } finally {
+    await client.send('G90').catch(() => undefined)
+  }
+}
+
+/**
+ * Bord simple : outil a cote du bord, a hauteur de palpage, palpe dans le sens
+ * indique ; l'origine de l'axe est placee sur le bord (paroi de plaque + rayon).
+ */
+export async function probeEdge(
+  client: GrblClient,
+  probe: ProbeSettings,
+  options: { direction: EdgeDirection; toolDiameter: number; travel: number },
+  log: (key: string, params?: Record<string, string | number>) => void,
+): Promise<void> {
+  checkSettings(probe)
+  if (!(options.travel >= 2 && options.travel <= 60)) throw new Error('Course de palpage invalide (2-60 mm)')
+  const axis = options.direction[0] as 'X' | 'Y'
+  const dir = options.direction[1] === '+' ? 1 : -1
+  const offset = (probe.xyWall ?? 0) + options.toolDiameter / 2
+  try {
+    await client.send('G21')
+    await client.send('G91')
+    client.clearLastProbe()
+    await client.send(`G38.2 ${axis}${f3(dir * options.travel)} F${Math.round(probe.fast)}`)
+    await client.send(`G0 ${axis}${f3(-dir)}`)
+    await sleep(150)
+    client.clearLastProbe()
+    await client.send(`G38.2 ${axis}${f3(dir * 2)} F${Math.round(probe.feed)}`)
+    if (!client.lastProbe?.ok) throw new Error(`Palpage ${axis} sans contact`)
+    // L'outil est AVANT le bord (dans le sens du palpage) : bord = contact + dir * (rayon + paroi).
+    await client.send(`G10 L20 P0 ${axis}${f3(-dir * offset)}`)
+    await client.send(`G0 ${axis}${f3(-dir * 2)}`)
+    log('Bord {dir} : origine {axis} définie', { dir: options.direction, axis })
+  } finally {
+    await client.send('G90').catch(() => undefined)
+  }
+}
