@@ -10,6 +10,7 @@ import { tr } from '../i18n'
 import type { GrblStatus, LogEntry, Vec3 } from '../grbl/types'
 import { raiseZWithMap } from '../gcode/dryrun'
 import { resumeProgram } from '../gcode/resume'
+import { estimateMinutes } from '../gcode/estimate'
 import { detectJobType, parseGcode, type Toolpath } from '../gcode/parser'
 import { parseGcodeInWorker } from '../cam/workerClient'
 import { createLibraryActions } from './library'
@@ -162,6 +163,14 @@ function guard(): boolean {
 
 // GRBL n'envoie WCO que periodiquement (tous les 10-30 rapports) : on garde le dernier.
 let lastWco: Vec3 | null = null
+
+/** Duree estimee (s) du programme, pour calibrer l'estimation avec l'historique. */
+function estimatedSecondsFor(toolpath: Toolpath | null, state: AppState): number | undefined {
+  const machine = state.machines.find((m) => m.id === state.machineId)
+  if (!toolpath || !machine) return undefined
+  const accel = Math.min(Number(state.settings[120]) || 500, Number(state.settings[121]) || 500)
+  return estimateMinutes(toolpath, { feed: state.params.feed, rapid: machine.rapid, accel }).minutes * 60
+}
 
 /** Mesure sur le capteur fixe ; null (et message) si impossible. */
 async function toolsetterMeasure(): Promise<number | null> {
@@ -680,6 +689,7 @@ export const useStore = create<AppState>((set, get) => ({
       material: state.materials.find((m) => m.id === state.materialId)?.name,
       bit: state.bits.find((b) => b.id === state.bitId)?.name,
       fromLine: fromLine && fromLine > 1 ? fromLine : undefined,
+      estimatedSeconds: estimatedSecondsFor(toolpathData, state),
     })
     await streamer.start()
   },

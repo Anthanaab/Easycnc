@@ -556,6 +556,8 @@ const EN: Record<string, string> = {
     'Machine not homed: approximate bounds check (home the machine for an accurate check).',
   'machine arrêtée : jog / palpage autorisés, puis « Reprendre ».': 'machine stopped: jog / probing allowed, then “Resume”.',
   'Machine non prête': 'Machine not ready',
+  "Corrigée avec la durée réelle des derniers programmes": "Corrected with the actual duration of recent programs",
+  "jobs": "jobs",
   "Appui court : un pas · appui long : déplacement continu · ⌖ : retour X0 Y0 (Z sécurité)": "Short press: one step · long press: continuous · ⌖: back to X0 Y0 (safe Z)",
   "Aucun programme chargé": "No program loaded",
   "Quitter le mode atelier": "Leave shop mode",

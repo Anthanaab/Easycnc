@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { estimateMinutes } from '../gcode/estimate'
 import { useT } from '../i18n'
+import { calibrationFrom, listJobs, type Calibration } from '../state/jobHistory'
 import { addRecentFile, getRecentFile, listRecentFiles, removeRecentFile, type RecentFile } from '../state/recentFiles'
 import { jobLimits, useStore } from '../state/store'
 import { useUiStore } from '../state/uiStore'
@@ -95,11 +96,15 @@ export function FilePanel() {
     () => (toolpath && machine ? estimateMinutes(toolpath, { feed: params.feed, rapid: machine.rapid, accel }) : null),
     [toolpath, machine, params.feed, accel],
   )
-  const timeText = estimate
-    ? estimate.minutes >= 1
-      ? `${estimate.minutes.toFixed(1)} min`
-      : `${Math.round(estimate.minutes * 60)} s`
-    : null
+  // Calibration sur l'historique : corrige l'estimation theorique.
+  const [calibration, setCalibration] = useState<Calibration | null>(null)
+  useEffect(() => {
+    if (running || paused) return
+    void listJobs().then((jobs) => setCalibration(calibrationFrom(jobs)))
+  }, [running, paused])
+  const minutes = estimate ? estimate.minutes * (calibration?.factor ?? 1) : null
+  const timeText =
+    minutes === null ? null : minutes >= 1 ? `${minutes.toFixed(1)} min` : `${Math.round(minutes * 60)} s`
 
   return (
     <section
@@ -191,7 +196,15 @@ export function FilePanel() {
 
       {estimate && (
         <div className="file-stats">
-          <span>{t('Durée estimée')} : {timeText}</span>
+          <span title={calibration ? t('Corrigée avec la durée réelle des derniers programmes') : undefined}>
+            {t('Durée estimée')} : {timeText}
+            {calibration && (
+              <span className="muted">
+                {' '}
+                (×{calibration.factor.toFixed(2)}, {calibration.samples} {t('jobs')})
+              </span>
+            )}
+          </span>
           {limits && (
             <span>
               {t('Emprise')} {limits.width.toFixed(1)}×{limits.height.toFixed(1)} mm
@@ -223,7 +236,7 @@ export function FilePanel() {
         <div className="file-stats">
           <span>{t('Écoulé')} : {formatDuration((now - stream.startedAt) / 1000)}</span>
           <span>
-            {t('Restant')} ≈ {formatDuration(remainingSeconds(now - stream.startedAt, done, stream.total, estimate?.minutes))}
+            {t('Restant')} ≈ {formatDuration(remainingSeconds(now - stream.startedAt, done, stream.total, minutes ?? undefined))}
           </span>
         </div>
       )}

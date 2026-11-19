@@ -22,8 +22,12 @@ export interface GrblEvents extends Record<string, unknown> {
   disconnected: void
 }
 
-// Taille du buffer de reception GRBL (128 octets) moins 1 de marge.
+// Taille du buffer de reception GRBL (128 octets) moins 1 de marge. Les cartes
+// grblHAL / FluidNC en ont souvent plus : detecte via le champ Bf des rapports.
 const RX_BUDGET = 127
+const RX_BUDGET_MAX = 1023
+// Banniere de demarrage : GRBL ("Grbl 1.1h"), FluidNC ("Grbl 3.7 [FluidNC ...]"), grblHAL ("GrblHAL 1.1f").
+const WELCOME = /^Grbl(HAL)?\s/i
 // Tampon de ligne GRBL (LINE_BUFFER_SIZE = 80) : au-dela, error:11. GRBL ignore
 // les espaces et les commentaires avant de remplir ce tampon.
 export const MAX_LINE_CHARS = 79
@@ -67,6 +71,10 @@ export class GrblClient extends Emitter<GrblEvents> {
   private statusMeansReady = false
 
   status: GrblStatus | null = null
+  /** Octets utilisables dans le tampon serie de la carte (128 - 1 par defaut). */
+  rxBudget = RX_BUDGET
+  /** Firmware detecte par la banniere : grbl, grblHAL, FluidNC. */
+  firmware: 'grbl' | 'grblHAL' | 'FluidNC' | null = null
   /** Vrai entre un changement d'origine (G10/G92/G5x/G43.1) et le rapport WCO suivant. */
   wcoStale = false
   welcome: string | null = null
@@ -182,7 +190,7 @@ export class GrblClient extends Emitter<GrblEvents> {
         return
       }
       const bytes = clean.length + 1
-      if (bytes > RX_BUDGET || grblLineLength(clean) > MAX_LINE_CHARS) {
+      if (bytes > this.rxBudget || grblLineLength(clean) > MAX_LINE_CHARS) {
         reject(new Error(`Ligne trop longue pour GRBL (${grblLineLength(clean)} caracteres) : ${clean.slice(0, 40)}…`))
         return
       }
@@ -196,7 +204,7 @@ export class GrblClient extends Emitter<GrblEvents> {
     if (!this.ready || !this._connected) return
     while (this.pending.length) {
       const task = this.pending[0]
-      if (this.txCount + task.bytes > RX_BUDGET) break
+      if (this.txCount + task.bytes > this.rxBudget) break
       this.pending.shift()
       this.inFlight.push(task)
       this.txCount += task.bytes
@@ -274,6 +282,13 @@ export class GrblClient extends Emitter<GrblEvents> {
       const status = parseStatus(line)
       if (status) {
         if (status.wco) this.wcoStale = false
+        // Bf:planner,rx = octets libres du tampon serie. Machine au repos et rien
+        // en vol : c'est sa taille totale (moins 1). Seulement a la hausse,
+        // plafonne, et jamais pour un firmware GRBL d'origine (128 octets fixes).
+        if (status.buffer && status.state === 'Idle' && this.inFlight.length === 0 && this.firmware && this.firmware !== 'grbl') {
+          const free = Math.min(status.buffer.rx, RX_BUDGET_MAX)
+          if (free > this.rxBudget) this.rxBudget = free
+        }
         // Un rapport d'etat prouve que GRBL tourne (cartes sans banniere).
         if (!this.ready && this.statusMeansReady) this.markReady()
         if (status.state === 'Home') this.homing = true
@@ -292,13 +307,16 @@ export class GrblClient extends Emitter<GrblEvents> {
       }
       return
     }
-    if (line.startsWith('Grbl ')) {
+    if (WELCOME.test(line)) {
       // Banniere = GRBL vient de (re)demarrer : ce qui etait dans son tampon
       // est perdu. Redemarrage attendu (connexion, reset, alarme) : seules les
       // lignes deja envoyees sont perdues, celles en attente sont pour la
       // nouvelle session. Redemarrage inattendu (coupure, glitch) : tout est
       // purge pour ne pas executer la suite d'un programme hors contexte.
       this.welcome = line
+      this.firmware = /FluidNC/i.test(line) ? 'FluidNC' : /^GrblHAL/i.test(line) ? 'grblHAL' : 'grbl'
+      // Taille du tampon a re-detecter (apres reset ou changement de carte).
+      this.rxBudget = RX_BUDGET
       this.homing = false
       if (this.ready) {
         this.homed = false

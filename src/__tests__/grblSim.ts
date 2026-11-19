@@ -12,6 +12,9 @@ export interface SimOptions {
   decelMs?: number
   /** Ligne qui provoque "error:20". */
   errorOn?: string
+  /** Taille du tampon de reception (128 sur GRBL, souvent 1024 sur grblHAL). */
+  rxSize?: number
+  banner?: string
 }
 
 type State = 'Idle' | 'Run' | 'Hold' | 'Alarm'
@@ -44,7 +47,7 @@ export class GrblSim {
   }
 
   boot(): void {
-    setTimeout(() => this.output("Grbl 1.1h ['$' for help]"), 1)
+    setTimeout(() => this.output(this.options.banner ?? "Grbl 1.1h ['$' for help]"), 1)
   }
 
   dispose(): void {
@@ -72,7 +75,7 @@ export class GrblSim {
       } else {
         this.rx += ch
         this.maxRx = Math.max(this.maxRx, this.rx.length)
-        if (this.rx.length > 128) this.overflow = true
+        if (this.rx.length > (this.options.rxSize ?? 128)) this.overflow = true
       }
     }
     this.processRx()
@@ -81,7 +84,9 @@ export class GrblSim {
   private report(): void {
     const p = this.wpos
     setTimeout(() => {
-      if (!this.stopped) this.output(`<${this.machineState}|MPos:${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}|FS:0,0|WCO:0.000,0.000,0.000>`)
+      const free = (this.options.rxSize ?? 128) - 1 - this.rx.length
+      if (!this.stopped)
+        this.output(`<${this.machineState}|MPos:${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}|Bf:${15 - this.planner.length},${free}|FS:0,0|WCO:0.000,0.000,0.000>`)
     }, 0)
   }
 

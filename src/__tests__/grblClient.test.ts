@@ -194,3 +194,37 @@ describe('GrblClient referencement', () => {
     await client.disconnect()
   })
 })
+
+describe('GrblClient grblHAL / FluidNC', () => {
+  it('reconnait la banniere grblHAL et exploite son tampon plus grand (Bf)', async () => {
+    const { client, written, receive } = makeClient()
+    await client.connect()
+    receive("GrblHAL 1.1f ['$' or '$HELP' for help]")
+    expect(client.firmware).toBe('grblHAL')
+    receive('<Idle|MPos:0.000,0.000,0.000|Bf:35,1023|FS:0,0>')
+    expect(client.rxBudget).toBe(1023)
+    const line = 'G1 X100.000 Y100.000 F1000'
+    const promises = Array.from({ length: 30 }, () => client.send(line))
+    await tick()
+    // 30 lignes * 27 octets = 810 <= 1023 : tout part d'un coup.
+    expect(written.filter((w) => w.startsWith('G1')).length).toBe(30)
+    for (let i = 0; i < 30; i++) receive('ok')
+    await Promise.all(promises)
+    await client.disconnect()
+  })
+
+  it('FluidNC reconnu ; GRBL d\'origine garde 127 octets meme si Bf annonce plus', async () => {
+    const fluid = makeClient()
+    await fluid.client.connect()
+    fluid.receive("Grbl 3.7 [FluidNC v3.7.8 (wifi) '$' for help]")
+    expect(fluid.client.firmware).toBe('FluidNC')
+    await fluid.client.disconnect()
+
+    const { client, receive } = makeClient()
+    await client.connect()
+    receive("Grbl 1.1h ['$' for help]")
+    receive('<Idle|MPos:0.000,0.000,0.000|Bf:15,500|FS:0,0>')
+    expect(client.rxBudget).toBe(127)
+    await client.disconnect()
+  })
+})

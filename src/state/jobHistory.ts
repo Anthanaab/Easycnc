@@ -16,6 +16,8 @@ export interface JobRecord {
   material?: string
   bit?: string
   fromLine?: number
+  /** Duree estimee au demarrage (s), pour calibrer l'estimation. */
+  estimatedSeconds?: number
 }
 
 const DB = 'easycnc-jobs'
@@ -97,4 +99,27 @@ async function prune(): Promise<void> {
   const all = await listJobs()
   const extra = all.slice(MAX_JOBS)
   if (extra.length) await tx('readwrite', (store) => extra.forEach((job) => store.delete(job.id)))
+}
+
+export interface Calibration {
+  /** Duree reelle / duree estimee (mediane). */
+  factor: number
+  samples: number
+}
+
+/**
+ * Coefficient de correction de l'estimation, appris sur les programmes termines
+ * en entier (pas de reprise) : mediane des 10 derniers, bornee a [0,5 ; 3].
+ */
+export function calibrationFrom(jobs: JobRecord[]): Calibration | null {
+  const ratios = jobs
+    .filter((job) => job.outcome === 'done' && !job.fromLine && job.endedAt && (job.estimatedSeconds ?? 0) >= 30)
+    .slice(0, 10)
+    .map((job) => (job.endedAt! - job.startedAt) / 1000 / job.estimatedSeconds!)
+    .filter((ratio) => Number.isFinite(ratio) && ratio > 0)
+    .sort((a, b) => a - b)
+  if (ratios.length < 2) return null
+  const mid = ratios.length >> 1
+  const median = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2
+  return { factor: Math.min(3, Math.max(0.5, median)), samples: ratios.length }
 }

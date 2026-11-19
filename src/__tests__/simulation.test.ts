@@ -141,3 +141,19 @@ describe('job complet face au simulateur GRBL', () => {
     expect(sim.overflow).toBe(false)
   })
 })
+
+describe('carte grblHAL (tampon 1024 octets)', () => {
+  it('tampon agrandi detecte, programme complet sans debordement', async () => {
+    const { client, sim } = await connect({ blockMs: 1, rxSize: 1024, banner: "GrblHAL 1.1f ['$' or '$HELP' for help]" })
+    await client.waitForStatus((s) => s.buffer !== undefined && s.state === 'Idle', 2000)
+    await until(() => client.rxBudget > 127)
+    const { streamer, events } = streamerFor(client)
+    const lines = program(300)
+    streamer.loadLines(lines)
+    await streamer.start()
+    expect(events).toEqual(['done'])
+    expect(sim.overflow).toBe(false)
+    expect(sim.maxRx).toBeGreaterThan(128) // le tampon plus grand est bien exploite
+    expect(sim.executed.filter((l) => /^G1 /.test(l))).toEqual(lines)
+  })
+})
